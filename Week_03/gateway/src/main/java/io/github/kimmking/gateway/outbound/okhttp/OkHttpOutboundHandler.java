@@ -1,10 +1,3 @@
-# 作业说明
-## Week03 作业题目（周四）：
-1.（必做）整合你上次作业的 httpclient/okhttp；
-
-在fork的基础代码上整合okhttp的client代码，做了如下修改：
-在io.github.kimmking.gateway.outbound.okhttp包下，添加类OkHttpOutboundHandler，实现了通过okhttp客户端访问指定的后端服务地址，获取的响应再传回请求的客户端。OkHttpOutboundHandler的代码如下：
-```
 package io.github.kimmking.gateway.outbound.okhttp;
 
 import io.github.kimmking.gateway.outbound.httpclient4.NamedThreadFactory;
@@ -63,6 +56,26 @@ public class OkHttpOutboundHandler {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        //异步方式
+/*        call.enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+            }
+
+            @Override
+            public void onResponse( Call call, Response response) throws IOException {
+                try {
+                    handleResponse(inbound, ctx, response);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+
+                }
+            }
+        });*/
+
     }
 
     private void handleResponse(final FullHttpRequest fullRequest, final ChannelHandlerContext ctx,
@@ -97,51 +110,5 @@ public class OkHttpOutboundHandler {
         cause.printStackTrace();
         ctx.close();
     }
+
 }
-
-```
-此外在，io.github.kimmking.gateway.inbound包下的HttpInboundHandler中将private HttpOutboundHandler handler;这一句换成private OkHttpOutboundHandler handler;同时构造函数中也做相应OkHttpOutboundHandler实例化。HttpInboundHandler代码如下：
-```
-package io.github.kimmking.gateway.inbound;
-
-import io.github.kimmking.gateway.outbound.okhttp.OkHttpOutboundHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.util.ReferenceCountUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class HttpInboundHandler extends ChannelInboundHandlerAdapter {
-
-    private static Logger logger = LoggerFactory.getLogger(HttpInboundHandler.class);
-    private final String proxyServer;
-    private OkHttpOutboundHandler handler;
-
-    public HttpInboundHandler(String proxyServer) {
-        this.proxyServer = proxyServer;
-        handler = new OkHttpOutboundHandler(this.proxyServer);
-    }
-
-    @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) {
-        ctx.flush();
-    }
-
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        try {
-            //logger.info("channelRead流量接口请求开始，时间为{}", startTime);
-            FullHttpRequest fullRequest = (FullHttpRequest) msg;
-
-            handler.handle(fullRequest, ctx);
-
-        } catch(Exception e) {
-            e.printStackTrace();
-        } finally {
-            ReferenceCountUtil.release(msg);
-        }
-    }
-}
-```
-
