@@ -628,7 +628,21 @@ public class HomeWorkUsingFutureTask {
 ```
 源代码见HomeWorkUsingFutureTask.java
 
-根据上面运行结果，LockSupport、Future以及Sleep+interrupt的方案运行时间相对较快。而编程使用看FutureTask方案代码比较友好，LockSupport和yield不需要涉及异常处理，也很不错，但是yield的实际使用场景比较少。
+----
+各方案运行结果
+采用方案|运行时间
+--|--
+wait+notiry|124 ms
+join|128 ms
+sleep + interrupt|74 ms
+yield|134 ms
+yield + COW|133 ms
+LockSupport|70 ms
+Lock + Condition|128 ms
+CountDownLatch|130 ms
+Future|80 ms
+FutureTask|137 ms
+根据上面运行结果，LockSupport、Future以及Sleep+interrupt的方案运行时间相对较快，不过Sleep+interrupt的应用场景可能比较受限。而编程使用看FutureTask方案代码比较友好，LockSupport和yield不需要涉及异常处理，也很不错，但是yield的实际使用场景比较少。
 
 ## week4 必做作业题二：把多线程和并发相关知识带你梳理一遍，画一个脑图
 使用xmind画了一个思维导图，源文件是Java_concurrent_programming_mindmap.xmind；导出的图片是Java_concurrent_programming_mindmap.png
