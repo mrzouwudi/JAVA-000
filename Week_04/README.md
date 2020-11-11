@@ -642,6 +642,7 @@ Lock + Condition|128 ms
 CountDownLatch|130 ms
 Future|80 ms
 FutureTask|137 ms
+
 根据上面运行结果，LockSupport、Future以及Sleep+interrupt的方案运行时间相对较快，不过Sleep+interrupt的应用场景可能比较受限。而编程使用看FutureTask方案代码比较友好，LockSupport和yield不需要涉及异常处理，也很不错，但是yield的实际使用场景比较少。
 
 ## week4 必做作业题二：把多线程和并发相关知识带你梳理一遍，画一个脑图
