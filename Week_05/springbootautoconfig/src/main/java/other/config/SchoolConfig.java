@@ -9,6 +9,8 @@ import other.bean.School;
 import other.bean.Student;
 
 @Configuration
+@ConditionalOnProperty(prefix = "myschool", name = "enabled", havingValue = "true",
+        matchIfMissing = true)
 public class SchoolConfig {
     @Bean
     @ConditionalOnMissingBean(Klass.class)
