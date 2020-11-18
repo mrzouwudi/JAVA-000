@@ -630,7 +630,105 @@ Task(id=1, title=任务标题, context=任务内容)
 ```
 以上相关源文件放在springjavaconfig目录下。
 
+方式七：自动配置，这部分实现方式看周六第4题的部分，这里不再详述。
+
 ## Week05 作业题目（周六）：
+4.（必做）给前面课程提供的 Student/Klass/School 实现自动配置和 Starter。
+
+首先建一个Springboot项目，将之前例子中ISchool，School，Klass以及Student类放到这个项目一个包（这个包不是在component-scan的包路径下的）下，然后建立一个配置类SchoolConfig，如下：
+```
+package other.config;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import other.bean.Klass;
+import other.bean.School;
+import other.bean.Student;
+
+@Configuration
+public class SchoolConfig {
+    @Bean
+    @ConditionalOnMissingBean(Klass.class)
+    public Klass klass() {
+        return new Klass();
+    }
+
+    @Bean("student100")
+    public Student student100(){
+        return new Student(1112,"kkkk");
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(School.class)
+    @ConditionalOnProperty(
+            prefix="myschool",
+            name="school",
+            matchIfMissing = true
+    )
+    public School school(){
+        School school = new School();
+
+        return school;
+    }
+}
+```
+创建一个类MySchooAutoConfig，通过@Import(SchoolConfig.class)，将前面的配置类引进来，如下：
+```
+package trainingcamp.homework.springbootautoconfig.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import other.config.SchoolConfig;
+
+@Configuration
+@Import(SchoolConfig.class)
+public class MySchooAutoConfig {
+}
+```
+
+在resources目录下创建META-INF目录，然后创建一个文件spring.factories，里面添加如下部分：
+```
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  trainingcamp.homework.springbootautoconfig.config.MySchooAutoConfig
+```
+填写上面的MySchooAutoConfig的全路径名。
+
+启动程序如下：
+```
+package trainingcamp.homework.springbootautoconfig;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import other.bean.School;
+
+@SpringBootApplication
+public class SpringbootautoconfigApplication implements CommandLineRunner {
+
+    @Autowired
+    School school;
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringbootautoconfigApplication.class, args);
+    }
+
+    @Override
+    public void run(String... args) throws Exception {
+        System.out.println(school);
+    }
+}
+```
+程序运行，结果如下：
+```
+School(class1=Klass(students=null), student100=Student(id=1112, name=kkkk))
+```
+表明自动装配是起作用了。
+项目工程在springbootautoconfig目录下。
+
+
 6.（必做）研究一下 JDBC 接口和数据库连接池，掌握它们的设计和用法：
 
 1）使用 JDBC 原生接口，实现数据库的增删改查操作。
