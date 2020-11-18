@@ -648,6 +648,8 @@ import other.bean.School;
 import other.bean.Student;
 
 @Configuration
+@ConditionalOnProperty(prefix = "myschool", name = "enabled", havingValue = "true",
+        matchIfMissing = true)
 public class SchoolConfig {
     @Bean
     @ConditionalOnMissingBean(Klass.class)
@@ -672,6 +674,7 @@ public class SchoolConfig {
 
         return school;
     }
+
 }
 ```
 创建一个类MySchooAutoConfig，通过@Import(SchoolConfig.class)，将前面的配置类引进来，如下：
