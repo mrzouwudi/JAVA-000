@@ -2,8 +2,10 @@ package other.config;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import other.bean.Klass;
 import other.bean.School;
 import other.bean.Student;
@@ -11,7 +13,10 @@ import other.bean.Student;
 @Configuration
 @ConditionalOnProperty(prefix = "myschool", name = "enabled", havingValue = "true",
         matchIfMissing = true)
-public class SchoolConfig {
+public class SchoolConfig  implements EnvironmentAware {
+
+    private Environment environment;
+
     @Bean
     @ConditionalOnMissingBean(Klass.class)
     public Klass klass() {
@@ -19,8 +24,15 @@ public class SchoolConfig {
     }
 
     @Bean("student100")
+    @ConditionalOnProperty(
+            prefix="myschool.school",
+            name="student100",
+            matchIfMissing = true
+    )
     public Student student100(){
-        return new Student(1112,"kkkk");
+        String idStr = environment.getProperty("myschool.school.student100.id");
+        String name = environment.getProperty("myschool.school.student100.name");
+        return new Student(Integer.parseInt(idStr),name);
     }
 
     @Bean
@@ -36,4 +48,8 @@ public class SchoolConfig {
         return school;
     }
 
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
+    }
 }

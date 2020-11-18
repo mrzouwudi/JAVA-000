@@ -641,8 +641,10 @@ package other.config;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import other.bean.Klass;
 import other.bean.School;
 import other.bean.Student;
@@ -650,7 +652,10 @@ import other.bean.Student;
 @Configuration
 @ConditionalOnProperty(prefix = "myschool", name = "enabled", havingValue = "true",
         matchIfMissing = true)
-public class SchoolConfig {
+public class SchoolConfig  implements EnvironmentAware {
+
+    private Environment environment;
+
     @Bean
     @ConditionalOnMissingBean(Klass.class)
     public Klass klass() {
@@ -658,8 +663,15 @@ public class SchoolConfig {
     }
 
     @Bean("student100")
+    @ConditionalOnProperty(
+            prefix="myschool.school",
+            name="student100",
+            matchIfMissing = true
+    )
     public Student student100(){
-        return new Student(1112,"kkkk");
+        String idStr = environment.getProperty("myschool.school.student100.id");
+        String name = environment.getProperty("myschool.school.student100.name");
+        return new Student(Integer.parseInt(idStr),name);
     }
 
     @Bean
@@ -675,8 +687,15 @@ public class SchoolConfig {
         return school;
     }
 
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
+    }
 }
 ```
+SchoolConfig实现了EnvironmentAware接口，可以通过environment获取配置文件中的相应的配置。当在配置文件（如application.properties）myschool.enabled为true或不填时，会进行自动装配，如果是false，则不会配置该bean。而且可以配置文件通过设置myschool.school.student100.id和myschool.school.student100.name修改shcool中student100的属性。
+
+
 创建一个类MySchooAutoConfig，通过@Import(SchoolConfig.class)，将前面的配置类引进来，如下：
 ```
 package trainingcamp.homework.springbootautoconfig.config;
