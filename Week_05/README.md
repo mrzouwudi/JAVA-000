@@ -629,3 +629,741 @@ begin insert a department record
 Task(id=1, title=任务标题, context=任务内容)
 ```
 以上相关源文件放在springjavaconfig目录下。
+
+## Week05 作业题目（周六）：
+6.（必做）研究一下 JDBC 接口和数据库连接池，掌握它们的设计和用法：
+
+1）使用 JDBC 原生接口，实现数据库的增删改查操作。
+
+2）使用事务，PrepareStatement 方式，批处理方式，改进上述操作。
+
+3）配置 Hikari 连接池，改进上述操作。
+
+先在本地数据库demo中建表user，user表里包含两个字段id和user_name,id是自增主键，user_name是varchar（20）。
+对应的实例类是User，如下：
+```
+package jdbc;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@ToString
+public class User {
+    private Integer id;
+    private String userName;
+}
+```
+
+1）使用 JDBC 原生接口，实现数据库的增删改查操作。
+```
+package jdbc;
+
+import lombok.AllArgsConstructor;
+import lombok.Setter;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@Setter
+@AllArgsConstructor
+public class StatementJdbcUserDao {
+    private String jdbcUrl;
+    private String username;
+    private String password;
+    static {
+        try {
+            //注册Driver操作对象
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 增加一个用户
+     * @param user
+     * @return
+     */
+    public boolean insertUser(final User user) {
+        if(null == user) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.createStatement();
+            //INSERT INTO user (name) VALUES (?)
+            int ret = statement.executeUpdate("INSERT INTO user ( user_name) VALUES (" + user.getUserName() + ")");
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return false;
+        } finally {
+            closeStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 删除指定用户
+     * @param id
+     * @return
+     */
+    public boolean deleteUserById(final Integer id) {
+        if (null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.createStatement();
+            //DELETE FROM user WHERE id = ？
+            int ret = statement.executeUpdate("DELETE FROM user WHERE id = " + id);
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return false;
+        } finally {
+            closeStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 更改用户名字
+     * @param user
+     * @return
+     */
+    public boolean updateUserName(final User user) {
+        if (null == user || null == user.getId()) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        Statement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.createStatement();
+            //UPDATE user SET name = ? WHERE id = ?
+            int ret = statement.executeUpdate("UPDATE user SET name = "+user.getUserName()+" WHERE id = " + user.getId());
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return false;
+        } finally {
+            closeStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 获取指定用户信息
+     * @param id
+     * @return
+     */
+    public User getUserById(final Integer id) {
+        if(null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        Statement statement = null;
+        ResultSet resultSet = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.createStatement();
+            //SELECT id,name FROM user WHERE id = ?
+            resultSet = statement.executeQuery("SELECT id,user_name FROM user WHERE id = " + id);
+            if(resultSet.next()) {
+                String userName = resultSet.getString(1);
+                User user = new User(id, userName);
+                return user;
+            }
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return null;
+        } finally {
+            closeResultSet(resultSet);
+            closeStatement(statement);
+            closeConn(conn);
+        }
+        return null;
+    }
+
+    /**
+     * 获取所有用户信息（实际开发需要分页，这个是示意）
+     */
+    public List<User> getAllUsers() {
+        Connection conn = null;
+        Statement statement = null;
+        ResultSet resultSet = null;
+        List<User> result = new ArrayList<>();
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.createStatement();
+            //SELECT id,name FROM user
+            resultSet = statement.executeQuery("SELECT id,user_name FROM user");
+            while (resultSet.next()) {
+                Integer id = resultSet.getInt(0);
+                String userName = resultSet.getString(1);
+                User user = new User(id, userName);
+                result.add(user);
+            }
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+        } finally {
+            closeResultSet(resultSet);
+            closeStatement(statement);
+            closeConn(conn);
+        }
+        return result;
+    }
+
+    private void closeConn(final Connection conn) {
+        if(conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closeStatement(final Statement statement) {
+        if(statement != null) {
+            try{
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closeResultSet(final ResultSet resultSet) {
+        if(resultSet != null) {
+            try {
+                resultSet.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+
+2）使用事务，PrepareStatement 方式，批处理方式，改进上述操作。
+```
+package jdbc;
+
+import lombok.AllArgsConstructor;
+import lombok.Setter;
+
+import java.sql.*;
+import java.util.List;
+
+/**
+ * 使用事务，PrepareStatement 方式，批处理方式
+ */
+@Setter
+@AllArgsConstructor
+public class PrepareStatementJdbcUserDao {
+    private String jdbcUrl;
+    private String username;
+    private String password;
+    static {
+        try {
+            //注册Driver操作对象
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 增加一个用户, 使用PrepareStatement和显式的事务
+     * @param user
+     * @return
+     */
+    public boolean insertUser(final User user) {
+        if(null == user) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            conn.setAutoCommit(false);
+            statement = conn.prepareStatement("INSERT INTO user (user_name) VALUES (?)");
+            statement.setString(1, user.getUserName());
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 删除指定用户, 使用PrepareStatement和显式的事务
+     * @param id
+     * @return
+     */
+    public boolean deleteUserById(final Integer id) {
+        if (null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            conn.setAutoCommit(false);
+            statement = conn.prepareStatement("DELETE FROM user WHERE id = ？");
+            statement.setInt(1, id);
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 更改用户名字, 使用PrepareStatement和显式的事务
+     * @param user
+     * @return
+     */
+    public boolean updateUserName(final User user) {
+        if (null == user || null == user.getId()) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            conn.setAutoCommit(false);
+            statement = conn.prepareStatement("UPDATE user SET user_name = ? WHERE id = ?");
+            statement.setString(1, user.getUserName());
+            statement.setInt(2, user.getId());
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 获取指定用户信息，使用PrepareStatement，查询不用事务
+     * @param id
+     * @return
+     */
+    public User getUserById(final Integer id) {
+        if(null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        ResultSet resultSet = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            statement = conn.prepareStatement("SELECT id,user_name FROM user WHERE id = ?");
+            statement.setInt(1, id);
+            resultSet = statement.executeQuery();
+            if(resultSet.next()) {
+                String userName = resultSet.getString(2);
+                User user = new User(id, userName);
+                return user;
+            }
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return null;
+        } finally {
+            closeResultSet(resultSet);
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+        return null;
+    }
+
+    /**
+     * 使用事务，PrepareStatement 方式，批处理方式的方式进行插入
+     * @param users
+     * @return
+     */
+    public boolean insertUsers(List<User> users) {
+        if(null == users) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = DriverManager.getConnection(jdbcUrl, username, password);
+            conn.setAutoCommit(false);
+            statement = conn.prepareStatement("INSERT INTO user (user_name) VALUES (?)");
+            for(User user : users) {
+                statement.setString(1, user.getUserName());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            conn.commit();
+            return true;
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    private void rollback(Connection conn) {
+        try {
+            conn.rollback();
+        } catch (SQLException se) {
+            se.printStackTrace();
+        }
+    }
+
+    private void closeConn(final Connection conn) {
+        if(conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closePreparedStatement(final PreparedStatement statement) {
+        if(statement != null) {
+            try{
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closeResultSet(final ResultSet resultSet) {
+        if(resultSet != null) {
+            try {
+                resultSet.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+其中，insertUsers使用了PreparedStatement的批量执行的相关方法addBatch()和executeBatch()
+
+3）配置 Hikari 连接池，改进上述操作。
+
+为配置Hikari连接池增加一个DatasourceConfig类，如下：
+```
+package jdbc;
+
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+public class DatasourceConfig {
+    private String jdbcUrl;
+    private String username;
+    private String password;
+    private int minimumIdle;
+    private int maximumPoolSize;
+    private int connectionTimeout;
+}
+```
+配置Hikari datasource后，代码如下：
+```
+package jdbc;
+
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import javax.sql.DataSource;
+import java.sql.*;
+import java.util.List;
+
+/**
+ * 配置了 Hikari 连接池
+ */
+public class DatasourceUserDao {
+    private DataSource dataSource;
+
+    static {
+        try {
+            //注册Driver操作对象
+            Class.forName("com.mysql.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public DatasourceUserDao(DatasourceConfig datasourceConfig) {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(datasourceConfig.getJdbcUrl());
+        config.setUsername(datasourceConfig.getUsername());
+        config.setPassword(datasourceConfig.getPassword());
+        config.setMinimumIdle(datasourceConfig.getMinimumIdle());
+        config.setMaximumPoolSize(datasourceConfig.getMaximumPoolSize());
+        config.setConnectionTimeout(datasourceConfig.getConnectionTimeout());
+        config.setAutoCommit(false);
+        dataSource = new HikariDataSource(config);
+    }
+
+    /**
+     * 增加一个用户, 使用PrepareStatement和显式的事务
+     * @param user
+     * @return
+     */
+    public boolean insertUser(final User user) {
+        if(null == user) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = dataSource.getConnection();
+            statement = conn.prepareStatement("INSERT INTO user (user_name) VALUES (?)");
+            statement.setString(1, user.getUserName());
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 删除指定用户, 使用PrepareStatement和显式的事务
+     * @param id
+     * @return
+     */
+    public boolean deleteUserById(final Integer id) {
+        if (null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = dataSource.getConnection();
+            statement = conn.prepareStatement("DELETE FROM user WHERE id = ？");
+            statement.setInt(1, id);
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 更改用户名字, 使用PrepareStatement和显式的事务
+     * @param user
+     * @return
+     */
+    public boolean updateUserName(final User user) {
+        if (null == user || null == user.getId()) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = dataSource.getConnection();
+            statement = conn.prepareStatement("UPDATE user SET user_name = ? WHERE id = ?");
+            statement.setString(1, user.getUserName());
+            statement.setInt(2, user.getId());
+            int ret = statement.executeUpdate();
+            conn.commit();
+            return (ret > 0);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    /**
+     * 获取指定用户信息，使用PrepareStatement，查询不用事务
+     * @param id
+     * @return
+     */
+    public User getUserById(final Integer id) {
+        if(null == id) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        ResultSet resultSet = null;
+        try {
+            conn = dataSource.getConnection();
+            statement = conn.prepareStatement("SELECT id,user_name FROM user WHERE id = ?");
+            statement.setInt(1, id);
+            resultSet = statement.executeQuery();
+            if(resultSet.next()) {
+                String userName = resultSet.getString(2);
+                User user = new User(id, userName);
+                return user;
+            }
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            return null;
+        } finally {
+            closeResultSet(resultSet);
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+        return null;
+    }
+
+    /**
+     * 使用事务，PrepareStatement 方式，批处理方式的方式进行插入
+     * @param users
+     * @return
+     */
+    public boolean insertUsers(List<User> users) {
+        if(null == users) {
+            throw new IllegalArgumentException();
+        }
+        Connection conn = null;
+        PreparedStatement statement = null;
+        try {
+            conn = dataSource.getConnection();
+            statement = conn.prepareStatement("INSERT INTO user (user_name) VALUES (?)");
+            for(User user : users) {
+                statement.setString(1, user.getUserName());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            conn.commit();
+            return true;
+        } catch (SQLException e) {
+            //处理异常信息
+            e.printStackTrace();
+            rollback(conn);
+            return false;
+        } finally {
+            closePreparedStatement(statement);
+            closeConn(conn);
+        }
+    }
+
+    private void rollback(Connection conn) {
+        try {
+            conn.rollback();
+        } catch (SQLException se) {
+            se.printStackTrace();
+        }
+    }
+
+    private void closeConn(final Connection conn) {
+        if(conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closePreparedStatement(final PreparedStatement statement) {
+        if(statement != null) {
+            try{
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void closeResultSet(final ResultSet resultSet) {
+        if(resultSet != null) {
+            try {
+                resultSet.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+demo程序如下：
+```
+package jdbc;
+
+import java.util.ArrayList;
+
+public class JdbcDemo {
+    public static void main(String[] args) {
+        DatasourceConfig config = new DatasourceConfig();
+        config.setJdbcUrl("jdbc:mysql://127.0.0.1:3306/demo?serverTimezone=UTC&characterEncoding=utf-8");
+        config.setUsername("root");
+        config.setPassword("");
+        config.setMinimumIdle(5);
+        config.setMaximumPoolSize(20);
+        config.setConnectionTimeout(3000);
+        DatasourceUserDao userDao = new DatasourceUserDao(config);
+        userDao.insertUser(new User(null, "小张"));
+        User user = userDao.getUserById(1);
+        System.out.println(user);
+        userDao.updateUserName(new User(1, "小李"));
+        ArrayList<User> users = new ArrayList<>();
+        users.add(new User(null, "aaa"));
+        users.add(new User(null, "bbb"));
+        userDao.insertUsers(users);
+        userDao.deleteUserById(1);
+    }
+}
+```
+以上源代码都在jdbc目录下
