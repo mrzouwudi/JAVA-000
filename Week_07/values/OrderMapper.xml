@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="traincamp.dbexpone.dao.OrderMapper" >
+  <resultMap id="BaseResultMap" type="traincamp.dbexpone.entity.Order" >
+    <constructor >
+      <idArg column="id" jdbcType="BIGINT" javaType="java.lang.Long" />
+      <arg column="user_id" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="product_id" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="product_code" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="product_name" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="product_pic" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="procuct_introduction" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="product_amout" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="product_price" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="discount" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="total_price" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="receiver_address" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="receiver_name" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="receiver_mobile" jdbcType="CHAR" javaType="java.lang.String" />
+      <arg column="remark" jdbcType="VARCHAR" javaType="java.lang.String" />
+      <arg column="freight" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="process_state" jdbcType="INTEGER" javaType="java.lang.Integer" />
+      <arg column="created_time" jdbcType="TIMESTAMP" javaType="java.util.Date" />
+      <arg column="updated_time" jdbcType="TIMESTAMP" javaType="java.util.Date" />
+      <arg column="paid_time" jdbcType="TIMESTAMP" javaType="java.util.Date" />
+      <arg column="deliveried_time" jdbcType="TIMESTAMP" javaType="java.util.Date" />
+    </constructor>
+  </resultMap>
+  <sql id="Base_Column_List" >
+    id, user_id, product_id, product_code, product_name, product_pic, procuct_introduction, 
+    product_amout, product_price, discount, total_price, receiver_address, receiver_name, 
+    receiver_mobile, remark, freight, process_state, created_time, updated_time, paid_time, 
+    deliveried_time
+  </sql>
+  <select id="selectByPrimaryKey" resultMap="BaseResultMap" parameterType="java.lang.Long" >
+    select 
+    <include refid="Base_Column_List" />
+    from t_order
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long" >
+    delete from t_order
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="traincamp.dbexpone.entity.Order" >
+    insert into t_order (id, user_id, product_id, 
+      product_code, product_name, product_pic, 
+      procuct_introduction, product_amout, product_price, 
+      discount, total_price, receiver_address, 
+      receiver_name, receiver_mobile, remark, 
+      freight, process_state, created_time, 
+      updated_time, paid_time, deliveried_time
+      )
+    values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=INTEGER}, #{productId,jdbcType=INTEGER}, 
+      #{productCode,jdbcType=VARCHAR}, #{productName,jdbcType=VARCHAR}, #{productPic,jdbcType=VARCHAR}, 
+      #{procuctIntroduction,jdbcType=VARCHAR}, #{productAmout,jdbcType=INTEGER}, #{productPrice,jdbcType=INTEGER}, 
+      #{discount,jdbcType=INTEGER}, #{totalPrice,jdbcType=INTEGER}, #{receiverAddress,jdbcType=VARCHAR}, 
+      #{receiverName,jdbcType=VARCHAR}, #{receiverMobile,jdbcType=CHAR}, #{remark,jdbcType=VARCHAR}, 
+      #{freight,jdbcType=INTEGER}, #{processState,jdbcType=INTEGER}, #{createdTime,jdbcType=TIMESTAMP}, 
+      #{updatedTime,jdbcType=TIMESTAMP}, #{paidTime,jdbcType=TIMESTAMP}, #{deliveriedTime,jdbcType=TIMESTAMP}
+      )
+  </insert>
+  <insert id="insertSelective" parameterType="traincamp.dbexpone.entity.Order" >
+    insert into t_order
+    <trim prefix="(" suffix=")" suffixOverrides="," >
+      <if test="id != null" >
+        id,
+      </if>
+      <if test="userId != null" >
+        user_id,
+      </if>
+      <if test="productId != null" >
+        product_id,
+      </if>
+      <if test="productCode != null" >
+        product_code,
+      </if>
+      <if test="productName != null" >
+        product_name,
+      </if>
+      <if test="productPic != null" >
+        product_pic,
+      </if>
+      <if test="procuctIntroduction != null" >
+        procuct_introduction,
+      </if>
+      <if test="productAmout != null" >
+        product_amout,
+      </if>
+      <if test="productPrice != null" >
+        product_price,
+      </if>
+      <if test="discount != null" >
+        discount,
+      </if>
+      <if test="totalPrice != null" >
+        total_price,
+      </if>
+      <if test="receiverAddress != null" >
+        receiver_address,
+      </if>
+      <if test="receiverName != null" >
+        receiver_name,
+      </if>
+      <if test="receiverMobile != null" >
+        receiver_mobile,
+      </if>
+      <if test="remark != null" >
+        remark,
+      </if>
+      <if test="freight != null" >
+        freight,
+      </if>
+      <if test="processState != null" >
+        process_state,
+      </if>
+      <if test="createdTime != null" >
+        created_time,
+      </if>
+      <if test="updatedTime != null" >
+        updated_time,
+      </if>
+      <if test="paidTime != null" >
+        paid_time,
+      </if>
+      <if test="deliveriedTime != null" >
+        deliveried_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides="," >
+      <if test="id != null" >
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="userId != null" >
+        #{userId,jdbcType=INTEGER},
+      </if>
+      <if test="productId != null" >
+        #{productId,jdbcType=INTEGER},
+      </if>
+      <if test="productCode != null" >
+        #{productCode,jdbcType=VARCHAR},
+      </if>
+      <if test="productName != null" >
+        #{productName,jdbcType=VARCHAR},
+      </if>
+      <if test="productPic != null" >
+        #{productPic,jdbcType=VARCHAR},
+      </if>
+      <if test="procuctIntroduction != null" >
+        #{procuctIntroduction,jdbcType=VARCHAR},
+      </if>
+      <if test="productAmout != null" >
+        #{productAmout,jdbcType=INTEGER},
+      </if>
+      <if test="productPrice != null" >
+        #{productPrice,jdbcType=INTEGER},
+      </if>
+      <if test="discount != null" >
+        #{discount,jdbcType=INTEGER},
+      </if>
+      <if test="totalPrice != null" >
+        #{totalPrice,jdbcType=INTEGER},
+      </if>
+      <if test="receiverAddress != null" >
+        #{receiverAddress,jdbcType=VARCHAR},
+      </if>
+      <if test="receiverName != null" >
+        #{receiverName,jdbcType=VARCHAR},
+      </if>
+      <if test="receiverMobile != null" >
+        #{receiverMobile,jdbcType=CHAR},
+      </if>
+      <if test="remark != null" >
+        #{remark,jdbcType=VARCHAR},
+      </if>
+      <if test="freight != null" >
+        #{freight,jdbcType=INTEGER},
+      </if>
+      <if test="processState != null" >
+        #{processState,jdbcType=INTEGER},
+      </if>
+      <if test="createdTime != null" >
+        #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null" >
+        #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="paidTime != null" >
+        #{paidTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="deliveriedTime != null" >
+        #{deliveriedTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <!-- MySQL下批量保存，可以foreach遍历 mysql支持values(),(),()语法 -->
+  <insert id="insertOrderBatch" parameterType="java.util.List">
+    insert into t_order (id, user_id, product_id,
+    product_code, product_name, product_pic,
+    procuct_introduction, product_amout, product_price,
+    discount, total_price, receiver_address,
+    receiver_name, receiver_mobile, remark,
+    freight, process_state, created_time,
+    updated_time, paid_time, deliveried_time
+    )
+    values
+    <foreach collection="orders" item="order" separator=",">
+      (#{order.id}, #{order.userId}, #{order.productId},
+      #{order.productCode}, #{order.productName}, #{order.productPic},
+      #{order.procuctIntroduction}, #{order.productAmout}, #{order.productPrice},
+      #{order.discount}, #{order.totalPrice}, #{order.receiverAddress},
+      #{order.receiverName}, #{order.receiverMobile}, #{order.remark},
+      #{order.freight}, #{order.processState}, #{order.createdTime},
+      #{order.updatedTime}, #{order.paidTime}, #{order.deliveriedTime}
+      )
+    </foreach>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="traincamp.dbexpone.entity.Order" >
+    update t_order
+    <set >
+      <if test="userId != null" >
+        user_id = #{userId,jdbcType=INTEGER},
+      </if>
+      <if test="productId != null" >
+        product_id = #{productId,jdbcType=INTEGER},
+      </if>
+      <if test="productCode != null" >
+        product_code = #{productCode,jdbcType=VARCHAR},
+      </if>
+      <if test="productName != null" >
+        product_name = #{productName,jdbcType=VARCHAR},
+      </if>
+      <if test="productPic != null" >
+        product_pic = #{productPic,jdbcType=VARCHAR},
+      </if>
+      <if test="procuctIntroduction != null" >
+        procuct_introduction = #{procuctIntroduction,jdbcType=VARCHAR},
+      </if>
+      <if test="productAmout != null" >
+        product_amout = #{productAmout,jdbcType=INTEGER},
+      </if>
+      <if test="productPrice != null" >
+        product_price = #{productPrice,jdbcType=INTEGER},
+      </if>
+      <if test="discount != null" >
+        discount = #{discount,jdbcType=INTEGER},
+      </if>
+      <if test="totalPrice != null" >
+        total_price = #{totalPrice,jdbcType=INTEGER},
+      </if>
+      <if test="receiverAddress != null" >
+        receiver_address = #{receiverAddress,jdbcType=VARCHAR},
+      </if>
+      <if test="receiverName != null" >
+        receiver_name = #{receiverName,jdbcType=VARCHAR},
+      </if>
+      <if test="receiverMobile != null" >
+        receiver_mobile = #{receiverMobile,jdbcType=CHAR},
+      </if>
+      <if test="remark != null" >
+        remark = #{remark,jdbcType=VARCHAR},
+      </if>
+      <if test="freight != null" >
+        freight = #{freight,jdbcType=INTEGER},
+      </if>
+      <if test="processState != null" >
+        process_state = #{processState,jdbcType=INTEGER},
+      </if>
+      <if test="createdTime != null" >
+        created_time = #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null" >
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="paidTime != null" >
+        paid_time = #{paidTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="deliveriedTime != null" >
+        deliveried_time = #{deliveriedTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="traincamp.dbexpone.entity.Order" >
+    update t_order
+    set user_id = #{userId,jdbcType=INTEGER},
+      product_id = #{productId,jdbcType=INTEGER},
+      product_code = #{productCode,jdbcType=VARCHAR},
+      product_name = #{productName,jdbcType=VARCHAR},
+      product_pic = #{productPic,jdbcType=VARCHAR},
+      procuct_introduction = #{procuctIntroduction,jdbcType=VARCHAR},
+      product_amout = #{productAmout,jdbcType=INTEGER},
+      product_price = #{productPrice,jdbcType=INTEGER},
+      discount = #{discount,jdbcType=INTEGER},
+      total_price = #{totalPrice,jdbcType=INTEGER},
+      receiver_address = #{receiverAddress,jdbcType=VARCHAR},
+      receiver_name = #{receiverName,jdbcType=VARCHAR},
+      receiver_mobile = #{receiverMobile,jdbcType=CHAR},
+      remark = #{remark,jdbcType=VARCHAR},
+      freight = #{freight,jdbcType=INTEGER},
+      process_state = #{processState,jdbcType=INTEGER},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      paid_time = #{paidTime,jdbcType=TIMESTAMP},
+      deliveried_time = #{deliveriedTime,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+</mapper>
