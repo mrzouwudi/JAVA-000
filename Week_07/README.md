@@ -1298,4 +1298,68 @@ LOAD DATA方式|22681ms
 
 可以看出，直接调用MySQL的数据导入方式最快，批量操作方式次之，而一次性插入携带多个插入值最慢。
 
+6.（选做）尝试自己做一个 ID 生成器（可以模拟 Seq 或 Snowflake）
 
+```
+package traincamp.dbexpone.service;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class SnowFlakeIdService {
+
+    //系统上线时间
+    private final long startTime = 1601256017000L;
+    //机器Id
+    private long workId;
+    //序列号
+    private long serialNum = 0;
+
+    //得到左移位
+    private final long serialNumBits = 20L;
+    private final long workIdBits = 2L;
+
+    private final long workIdShift = serialNumBits;
+    private final long timestampShift = workIdShift + workIdBits;
+
+    private long lastTimeStamp = 0L;
+
+    private long serialNumMax = -1 ^ (-1L << serialNumBits);
+
+    public SnowFlakeIdService() {
+        this(1L);
+    }
+
+    public SnowFlakeIdService(long workId) {
+        this.workId = workId;
+    }
+
+    public synchronized long getId() {
+        long timestamp = System.currentTimeMillis();
+        if( timestamp == lastTimeStamp) {
+            serialNum = (serialNum + 1) & serialNumMax;
+            if (serialNum == 0) {
+                timestamp = waitNextMillis(timestamp);
+            }
+        } else {
+            serialNum = timestamp & 1;
+        }
+        lastTimeStamp = timestamp;
+        return ((timestamp - startTime) << timestampShift)
+                | (workId << workIdShift)
+                | serialNum;
+    }
+
+    private long waitNextMillis(long timestamp) {
+        long nowTimestamp = System.currentTimeMillis();
+        while ( timestamp >= nowTimestamp) {
+            nowTimestamp = System.currentTimeMillis();
+        }
+        return nowTimestamp;
+    }
+}
+```
+这个生成方法是按照网上一些介绍snowflake的资料中的代码稍作修改而成。具体来说有以下几点：
+（1）生产的ID占64个bit，最高是0，接下来41位是当前时间戳和某个过去时点的时间戳的差值（我这里用的当时写代码的时间），然后若干bit为机器ID（这里是用2个bit，这个值可以修改），然后剩下的bit位为序列号所占的位数。这些bit加起来是64位，正好对应一个Long型整数。
+（2）在构造函数中制定机器ID
+（3）getId方法是同步方法，首先查看当前的时间戳和上次更新的时间戳是否相同，如果相同则将序列号加一，如果序列号已经全部用完，即serialNum变回0，则可以自旋一下，到下一个毫秒。如果当前的时间戳和上次更新的时间戳不同时，并不将serialNum设为0，而是timestamp & 1，这样是为了让serialNum的值更随机一下。
