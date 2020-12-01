@@ -1,0 +1,23 @@
+
+spring:
+  datasource:
+    master: # 写数据库
+      jdbc-url: jdbc:mysql://localhost:3306/db1?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    slave1: # 只读数据库1
+      jdbc-url: jdbc:mysql://localhost:3306/db2?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    slave2: # 只读数据库2
+      jdbc-url: jdbc:mysql://localhost:3306/db3?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    hikari:
+      max-lifetime: 1800000
+      minimum-idle: 10
+      maximum-pool-size: 30
+      connection-timeout: 30000
+      idle-timeout: 600000
+server:
+  port: 8088

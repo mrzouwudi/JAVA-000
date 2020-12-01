@@ -1,5 +1,5 @@
 # 作业说明
-## Week07 作业题目（周六）：
+## Week07 作业题目（周四）：
 2.（必做）按自己设计的表结构，插入 100 万订单模拟数据，测试不同方式的插入效率
 
 首先是，我设计的订单表结构如下：
@@ -1363,3 +1363,405 @@ public class SnowFlakeIdService {
 （1）生产的ID占64个bit，最高是0，接下来41位是当前时间戳和某个过去时点的时间戳的差值（我这里用的当时写代码的时间），然后若干bit为机器ID（这里是用2个bit，这个值可以修改），然后剩下的bit位为序列号所占的位数。这些bit加起来是64位，正好对应一个Long型整数。
 （2）在构造函数中制定机器ID
 （3）getId方法是同步方法，首先查看当前的时间戳和上次更新的时间戳是否相同，如果相同则将序列号加一，如果序列号已经全部用完，即serialNum变回0，则可以自旋一下，到下一个毫秒。如果当前的时间戳和上次更新的时间戳不同时，并不将serialNum设为0，而是timestamp & 1，这样是为了让serialNum的值更随机一下。
+
+## Week07 作业题目（周六）：
+2.（必做）读写分离 - 动态切换数据源版本 1.0
+
+这个部分，我是参考网上一些资料，探索之后进行一些修改后完成的，能够完成以下几点：
+1. 可以配置多个数据源，代码中我配了一个主，两个从。
+2. 使用了自定义主键@Master和Aop以及派生自AbstractRoutingDataSource可以根据方法上的注解以及方法名特征（如是insert、add等开头的方法）进行数据库切换
+3. 设置了事务控制
+4. 多个从库切换时可以进行负载均衡
+
+下面是源码的解析部分
+1. 在配置文件application.yml中设置一主多从
+```
+spring:
+  datasource:
+    master: # 写数据库
+      jdbc-url: jdbc:mysql://localhost:3306/db1?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    slave1: # 只读数据库1
+      jdbc-url: jdbc:mysql://localhost:3306/db2?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    slave2: # 只读数据库2
+      jdbc-url: jdbc:mysql://localhost:3306/db3?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT
+      username: root
+      password: root
+    hikari:
+      max-lifetime: 1800000
+      minimum-idle: 10
+      maximum-pool-size: 30
+      connection-timeout: 30000
+      idle-timeout: 600000
+server:
+  port: 8088
+```
+可以看到配置了一主两从，这里使用同一个实例下三个数据库模拟成三个不同的数据库实例下的数据库，这三个数据库都包含一个表t_user，表结构如下：
+```
+CREATE TABLE `t_user` (
+  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户标识，主键',
+  `nickname` VARCHAR(30) DEFAULT NULL COMMENT '用户昵称',
+  `login_name` VARCHAR(30) DEFAULT NULL COMMENT '用户登录名',
+  `password` CHAR(40) DEFAULT NULL COMMENT '登录密码，用sha-1散列',
+  `mobile` CHAR(11) DEFAULT NULL COMMENT '11位手机号码',
+  `created_time` TIMESTAMP NULL DEFAULT NULL COMMENT '创建时间',
+  `updated_time` TIMESTAMP NULL DEFAULT NULL COMMENT '更新时间',
+  `is_delete` TINYINT(4) DEFAULT NULL COMMENT '删除标志，0-未删除，1-已删除',
+  PRIMARY KEY (`id`)
+) ENGINE=INNODB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4
+```
+三个数据库里实例中记录是有所不同，这样在进行从库进行切换时更容易进行观察
+
+2. 数据库的配置类
+```
+package traincamp.datasource.readwrite.customization.config;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import traincamp.datasource.readwrite.customization.bean.MyRoutingDataSource;
+import traincamp.datasource.readwrite.customization.enums.DBTypeEnum;
+
+import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class DataSourceConfig {
+
+    /**
+     * 写库
+     * @return
+     */
+    @Bean
+    @ConfigurationProperties("spring.datasource.master")
+    public DataSource masterDataSource() {
+        return DataSourceBuilder.create().build();
+    }
+
+    /**
+     * 读库
+     * @return
+     */
+    @Bean
+    @ConfigurationProperties("spring.datasource.slave1")
+    public DataSource slave1DataSource() {
+        return DataSourceBuilder.create().build();
+    }
+
+    /**
+     * 读库
+     * @return
+     */
+    @Bean
+    @ConfigurationProperties("spring.datasource.slave2")
+    public DataSource slave2DataSource() {
+        return DataSourceBuilder.create().build();
+    }
+
+    @Bean
+    public DataSource myRoutingDataSource(@Qualifier("masterDataSource") DataSource masterDataSource,
+                                          @Qualifier("slave1DataSource") DataSource slave1DataSource,
+                                          @Qualifier("slave2DataSource") DataSource slave2DataSource) {
+        Map<Object, Object> targetDataSources = new HashMap<>();
+        targetDataSources.put(DBTypeEnum.MASTER, masterDataSource);
+        targetDataSources.put(DBTypeEnum.SLAVE1, slave1DataSource);
+        targetDataSources.put(DBTypeEnum.SLAVE2, slave2DataSource);
+        MyRoutingDataSource myRoutingDataSource = new MyRoutingDataSource();
+        myRoutingDataSource.setDefaultTargetDataSource(masterDataSource);
+        myRoutingDataSource.setTargetDataSources(targetDataSources);
+        return myRoutingDataSource;
+    }
+}
+```
+可以看到从配置文件中读取到数据库配置信息后生成响应的DataSource实例，然后放入一个Map中最后设置到AbstractRoutingDataSource子类MyRoutingDataSource中。下面是MyRoutingDataSource的代码
+```
+package traincamp.datasource.readwrite.customization.bean;
+
+import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
+import org.springframework.lang.Nullable;
+
+public class MyRoutingDataSource extends AbstractRoutingDataSource {
+    @Nullable
+    @Override
+    protected Object determineCurrentLookupKey() {
+        return DBContextHolder.get();
+    }
+}
+```
+这里DBContextHolder是当前线程存放实际访问DataSource对应的Key，这个部分后面详述。
+另外，还有进行事务的配置和Mybatis的SqlSessionFactory的设置。下面相关源码：
+```
+package traincamp.datasource.readwrite.customization.config;
+
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionFactoryBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import javax.annotation.Resource;
+import javax.sql.DataSource;
+
+@EnableTransactionManagement
+@Configuration
+public class MyBatisConfig {
+    @Resource(name = "myRoutingDataSource")
+    private DataSource myRoutingDataSource;
+
+    /**
+     * 扫描mybatis下的xml文件
+     * @return
+     * @throws Exception
+     */
+    @Bean
+    public SqlSessionFactory sqlSessionFactory() throws Exception {
+        SqlSessionFactoryBean sqlSessionFactoryBean = new SqlSessionFactoryBean();
+        sqlSessionFactoryBean.setDataSource(myRoutingDataSource);
+        sqlSessionFactoryBean.setMapperLocations(new PathMatchingResourcePatternResolver().getResources("classpath:mapper/*.xml"));
+        return sqlSessionFactoryBean.getObject();
+    }
+
+    @Bean
+    public PlatformTransactionManager platformTransactionManager() {
+        return new DataSourceTransactionManager(myRoutingDataSource);
+    }
+}
+```
+因为MyRoutingDataSource封装了配置主从数据库的DataSource，所有事务管理就要指向这个DataSource的Bean。
+3. 自定义注解和AOP的配置相结合根据方法是否有注解以及方法名特征进行主从库的切换
+自定义注解，如下：
+```
+package traincamp.datasource.readwrite.customization.annotation;
+
+public @interface Master {
+}
+```
+使用时可以在service方式上进行注解，如下面UserService代码所示：
+```
+package traincamp.datasource.readwrite.customization.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import traincamp.datasource.readwrite.customization.annotation.Master;
+import traincamp.datasource.readwrite.customization.dao.UserMapper;
+import traincamp.datasource.readwrite.customization.entity.User;
+
+import java.util.List;
+
+@Service
+public class UserService {
+
+    @Autowired
+    private UserMapper userMapper;
+
+    @Master
+    public void saveUser(User user) {
+        userMapper.insert(user);
+    }
+
+    public void insertUser(User user) {
+        userMapper.insert(user);
+    }
+
+    public User getUserById(Integer id) {
+        User user = userMapper.selectByPrimaryKey(id);
+        if(user != null) {
+            System.out.println(user.getNickname());
+        }
+        return user;
+    }
+
+    public List<User> getUsers() {
+        List<User> users = userMapper.selectByExample(null);
+        users.stream().forEach(System.out::println);
+        return users;
+    }
+}
+```
+此时，使用AOP，当方法UserService的方法调用时，可以进行数据库切换，具体代码如下：
+```
+package traincamp.datasource.readwrite.customization.aop;
+
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.stereotype.Component;
+import traincamp.datasource.readwrite.customization.bean.DBContextHolder;
+
+@Aspect
+@Component
+public class DataSourceAop {
+    /**
+     * 只读：
+     * 不是Master注解的对象或方法  && select开头的方法  ||  get开头的方法
+     */
+    @Pointcut("!@annotation(traincamp.datasource.readwrite.customization.annotation.Master) " +
+            "&& (execution(* traincamp.datasource.readwrite.customization.service..*.select*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.get*(..)))")
+    public void readPointcut() {
+
+    }
+
+    /**
+     * 写：
+     * Master注解的对象或方法 || insert开头的方法  ||  add开头的方法 || update开头的方法
+     * || edlt开头的方法 || delete开头的方法 || remove开头的方法
+     */
+    @Pointcut("@annotation(traincamp.datasource.readwrite.customization.annotation.Master) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.insert*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.add*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.update*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.edit*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization.service..*.delete*(..)) " +
+            "|| execution(* traincamp.datasource.readwrite.customization..*.remove*(..))")
+    public void writePointcut() {
+
+    }
+
+    @Before("readPointcut()")
+    public void read() {
+        DBContextHolder.slave();
+    }
+
+    @Before("writePointcut()")
+    public void write() {
+        DBContextHolder.master();
+    }
+}
+```
+可以看到，当方法有@Master注解或方法名是由inset、add、update、edit、delete和remove开头时，这个方法调用前会调用DBContextHolder.master()切换到主库，而如果方法名没有@Master注解而且方法名是有select或get开头时就调用DBContextHolder.slave()切换到从库。这里切换到从库是轮询的方式从从库中挑出一个进行切换的，后面DBContextHolder代码中可以看到。通过这个AOP的设置，就可以进行主从的相应切换。
+4. DBContextHolder的主从切换，以及从库切换的负载均衡。代码如下：
+```
+package traincamp.datasource.readwrite.customization.bean;
+
+import traincamp.datasource.readwrite.customization.enums.DBTypeEnum;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class DBContextHolder {
+    private static final ThreadLocal<DBTypeEnum> contextHolder = new ThreadLocal<>();
+    private static final AtomicInteger counter = new AtomicInteger(-1);
+
+    public static void set(DBTypeEnum dbType) {
+        contextHolder.set(dbType);
+    }
+
+    public static DBTypeEnum get() {
+        return contextHolder.get();
+    }
+
+    public static void master() {
+        set(DBTypeEnum.MASTER);
+        System.out.println("切换到master");
+    }
+
+    public static void slave() {
+        //  轮询
+        int index = counter.getAndIncrement() % 2;
+        if (counter.get() > 9999) {
+            counter.set(-1);
+        }
+        if (index == 0) {
+            set(DBTypeEnum.SLAVE1);
+            System.out.println("切换到slave1");
+        }else {
+            set(DBTypeEnum.SLAVE2);
+            System.out.println("切换到slave2");
+        }
+    }
+}
+```
+如从上面的代码，DBContextHolder使用了ThreadLocal，保存当前准备切换的DataSource对应的key，调用master方法则是向ThreadLocal中，放入代表主库的key，而调用slave方法时，则是对从库（这里配置的是两个）中进行轮询式负载均衡找到一个从库对应的key放入到ThreadLocal中。而get方法则是从ThreadLocal中获取准备切换的DataSource对应的key。
+
+这样，可以整个逻辑就清晰了，SpringBoot程序启动时进行自动配置，将配置文件中的主从库信息读取出来后放入到一个Map中，并由AbstractRoutingDataSource的子类进行封装，而这个DataSource注入到SqlSessionFactoryBean和DataSourceTransactionManager中。当操作数据库的Service的方法调用时，AOP会进行判定，然后调用DBContextHolder的master方法或slave方法设置切换相应的DataSource（实际是设置对应的Key），而mapper类调用时会使用SqlSession，也就会从AbstractRoutingDataSource的子类中获取实际的DataSource，这时AbstractRoutingDataSource的子类会通过DBContextHolder.get方法获取相应DataSource的key，这样就可以从Map中获取真正的DataSource进行使用了。
+
+DataSource的可以一个枚举类型，如下：
+```
+package traincamp.datasource.readwrite.customization.enums;
+
+public enum DBTypeEnum {
+    MASTER,
+    SLAVE1,
+    SLAVE2
+}
+```
+
+5. 测试。为了便于观察，我写了一个Controller，可以反复通过HTTP请求触发Service上的方法调用，观察结果。代码如下：
+```
+package traincamp.datasource.readwrite.customization.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import traincamp.datasource.readwrite.customization.entity.User;
+import traincamp.datasource.readwrite.customization.service.UserService;
+
+import java.util.Date;
+import java.util.List;
+
+@RestController
+@RequestMapping("/hello")
+public class HelloController {
+
+    @Autowired
+    private UserService userService;
+
+    @GetMapping("/save")
+    public String saveUser() {
+        User user = generatorUser();
+        userService.saveUser(user);
+        return "save one user";
+    }
+
+    @GetMapping("/insert")
+    public String insertUser() {
+        User user = generatorUser();
+        userService.saveUser(user);
+        return "save one user";
+    }
+
+    @GetMapping("/user/{id}")
+    public User getUserById(@PathVariable("id") Integer id) {
+        User user =  userService.getUserById(id);
+        if(user == null) {
+            System.out.println("user is null");
+        }
+        return user;
+    }
+
+    @GetMapping("/users")
+    public List<User> users() {
+        return userService.getUsers();
+    }
+
+    private User generatorUser() {
+        User user = new User();
+        user.setNickname("Alice");
+        user.setLoginName("Alice");
+        user.setPassword("7c4a8d09ca3762af61e59520943dc26494f8941b");
+        user.setMobile("13500135000");
+        user.setCreatedTime(new Date());
+        user.setIsDelete(Byte.valueOf("0"));
+        return user;
+    }
+}
+```
+访问http://localhost:8088/hello/save和http://localhost:8088/hello/insert，都可以对主库插入一条记录。而http://localhost:8088/user/1，不断访问，可以观察到从库1和从库2里记录是轮替返回的，说明切换从库成功，而且是有负载均衡的。
+
+以上，代码在customization_readwrite目录下的工程中。
+
+总结：
+
+这个方式是可以达到读写分离，而且是一主多从，从库可以负载均衡。但是代码侵入较大，而且如果从库数量发生变化时需要对代码进行改动。此外，如果进行写操作后立刻进行读操作还是会读从库，如果想读主库需要在读方法上设置注解，这样代码会比较僵化。
+
