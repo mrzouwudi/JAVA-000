@@ -1765,3 +1765,238 @@ public class HelloController {
 
 这个方式是可以达到读写分离，而且是一主多从，从库可以负载均衡。但是代码侵入较大，而且如果从库数量发生变化时需要对代码进行改动。此外，如果进行写操作后立刻进行读操作还是会读从库，如果想读主库需要在读方法上设置注解，这样代码会比较僵化。
 
+3.（必做）读写分离 - 数据库框架版本 2.0
+
+这个部分，主要是参考官网例子中sharding-spring-boot-mybatis-example这个工程的配置以及群里宋科儒和助教猫大人讨论以及提及的这个issue（https://github.com/apache/shardingsphere/issues/8306 ） 完成这道题。
+
+本题是在上一题基础上进行改进的，依旧是配置了一主两从，而且使用同一个实例下三个数据库模拟成三个不同的数据库实例下的数据库，这三个数据库都包含一个表t_user，表结构和生成的实体类和Mabatis的dao和mapper文件可以参考上题，这里不展开了。
+
+下面依次说明和上一题不一样的地方
+1. POM文件中引入shardingsphere-jdbc-core-spring-boot-starter
+```
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc-core-spring-boot-starter</artifactId>
+            <version>5.0.0-alpha</version>
+        </dependency>
+```
+完整的POM文件如下：
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.4.0</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <groupId>traincamp.datasource</groupId>
+    <artifactId>shardingsphere</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>shardingsphere</name>
+    <description>Demo project for Spring Boot</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mybatis.spring.boot</groupId>
+            <artifactId>mybatis-spring-boot-starter</artifactId>
+            <version>2.1.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc-core-spring-boot-starter</artifactId>
+            <version>5.0.0-alpha</version>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.mybatis.generator</groupId>
+                <artifactId>mybatis-generator-maven-plugin</artifactId>
+                <version>1.3.2</version>
+                <configuration>
+                    <configurationFile>${basedir}/src/main/resources/generator/generatorConfig.xml</configurationFile>
+                    <overwrite>true</overwrite>
+                    <verbose>true</verbose>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>mysql</groupId>
+                        <artifactId>mysql-connector-java</artifactId>
+                        <version>8.0.22</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+```
+
+2. 在application.properties配置文件中增加相关配置，内容如下：
+```
+server.port=8088
+mybatis.mapper-locations=classpath*:mapper/*.xml
+mybatis.type-aliases-package=traincamp.datasource.shardingsphere.entity
+# shardigsphere-jdbc configuration
+spring.shardingsphere.datasource.names=primary-ds,replica-ds-0,replica-ds-1
+
+spring.shardingsphere.datasource.common.type=com.zaxxer.hikari.HikariDataSource
+spring.shardingsphere.datasource.common.driver-class-name=com.mysql.jdbc.Driver
+spring.shardingsphere.datasource.common.username=root
+spring.shardingsphere.datasource.common.password=root
+
+spring.shardingsphere.datasource.primary-ds.jdbc-url=jdbc:mysql://localhost:3306/db1?serverTimezone=UTC&useSSL=false&useUnicode=true&characterEncoding=UTF-8
+spring.shardingsphere.datasource.replica-ds-0.jdbc-url=jdbc:mysql://localhost:3306/db2?serverTimezone=UTC&useSSL=false&useUnicode=true&characterEncoding=UTF-8
+spring.shardingsphere.datasource.replica-ds-1.jdbc-url=jdbc:mysql://localhost:3306/db3?serverTimezone=UTC&useSSL=false&useUnicode=true&characterEncoding=UTF-8
+
+spring.shardingsphere.rules.replica-query.data-sources.pr-ds.primary-data-source-name=primary-ds
+spring.shardingsphere.rules.replica-query.data-sources.pr-ds.replica-data-source-names=replica-ds-0,replica-ds-1
+spring.shardingsphere.rules.replica-query.data-sources.pr-ds.load-balancer-name=round-robin
+spring.shardingsphere.rules.replica-query.load-balancers.round-robin.type=ROUND_ROBIN
+spring.shardingsphere.rules.replica-query.load-balancers.round-robin.props.workid=123
+```
+首先是在spring.shardingsphere.datasource.names，指明三个DataSource，分别命名是primary-ds,replica-ds-0,replica-ds-1。然后将三个数据源公共的部分由spring.shardingsphere.datasource.common分别指定，官网的例子中没有这个部分，但是会报错，根据这个issue （ https://github.com/apache/shardingsphere/issues/8306 ），是要配置datasource common，否则在springboot2.4中报错。
+接着是三个库的链接。然后指明主库和从库，其中从库可以是多个，用逗号隔开。最后指明负载均衡算法是轮询方式。
+
+这里有一点要说明，在SpringBoot2.x中配置文件中多个单词构成的属性是要符合kebab-case形式，因此下划线"_"是要用"-"代替的。
+
+3. 在service类中需要给相关方法添加@Transactional注解，这样在“同一线程且同一数据库连接内，如有写入操作，以后的读操作均从主库读取，用于保证数据一致性”。代码如下：
+```
+package traincamp.datasource.shardingsphere.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import traincamp.datasource.shardingsphere.dao.UserMapper;
+import traincamp.datasource.shardingsphere.entity.User;
+
+import java.util.List;
+
+@Service
+public class UserService {
+    @Autowired
+    private UserMapper userMapper;
+
+    public void saveUser(User user) {
+        userMapper.insert(user);
+    }
+
+    public User getUserById(Integer id) {
+        User user = userMapper.selectByPrimaryKey(id);
+        if(user != null) {
+            System.out.println(user.getNickname());
+        }
+        return user;
+    }
+
+    public List<User> getUsers() {
+        List<User> users = userMapper.selectByExample(null);
+        return users;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<User> saveOneUserAndGetUsers(User user) {
+        userMapper.insert(user);
+        return userMapper.selectByExample(null);
+    }
+}
+```
+
+4. 测试，为了便于测试写了一个Controller类，如下：
+```
+package traincamp.datasource.shardingsphere.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import traincamp.datasource.shardingsphere.entity.User;
+import traincamp.datasource.shardingsphere.service.UserService;
+
+import java.util.Date;
+import java.util.List;
+
+@RestController
+@RequestMapping("/hello")
+public class HelloController {
+    @Autowired
+    private UserService userService;
+
+    @GetMapping("/user/{id}")
+    public User getUserById(@PathVariable("id") Integer id) {
+        User user = userService.getUserById(id);
+        return user;
+    }
+
+    @GetMapping("/users")
+    public List<User> users() {
+        return userService.getUsers();
+    }
+
+    @GetMapping("/save")
+    public List<User> saveUser() {
+        User user = generatorUser();
+        return userService.saveOneUserAndGetUsers(user);
+    }
+
+    private User generatorUser() {
+        User user = new User();
+        user.setNickname("Alex");
+        user.setLoginName("Alex");
+        user.setPassword("7c4a8d09ca3762af61e59520943dc26494f8941b");
+        user.setMobile("13500135000");
+        user.setCreatedTime(new Date());
+        user.setIsDelete(Byte.valueOf("0"));
+        return user;
+    }
+}
+```
+一个访问链接是/hello/user/1，可以获取表中ID为1的记录，重复访问这个链接，可以发现是从两个从库中依次取值的(便于观察，两个从库中ID为1的记录的值是不一样的)。说明读的SQL自动指向了从库，并且采用轮询的负载均衡。
+
+另一个链接/hello/save可以先保存一条记录然后返回表中所有记录，调用后可以看到包含新插入的记录，而且是否返回主库的表中的记录（便于观察，主库和各从库的记录是不一样的）。当把这个注解注释掉，则发现记录是插入到主库，但是读取所有记录时是从一个从库中获取的。这样证明如果使用了@Transaction注解是起作用的。
+
+总结：
+使用shardingsphere-jdbc，后对业务代码是无侵入的而且能有效保证“同一线程且同一数据库连接内，如有写入操作，以后的读操作均从主库读取，用于保证数据一致性”。
+
+另外，使用官网例子是比较容易入手的，但是需要注意到和SpringBoot版本的兼容性有差异，这点倒是希望官网的例子能及时更新。
+
+最后特别感谢宋科儒和助教猫大人，没有他们在群里的沟通记录，还要花费相当的时间进行摸索。
+
+以上代码在shardingsphere目录下的工程中
