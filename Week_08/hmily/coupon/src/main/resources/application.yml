@@ -1,0 +1,29 @@
+#配置端口
+server:
+  port: 7003
+#注册到eureka客户端的名字
+spring:
+  application:
+    name: coupon-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/hmily_demo_coupon?useUnicode=true&characeterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: root
+
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: traincamp.hmily.coupon.entity
+#eureka相关实例
+eureka:
+  instance:
+    lease-expiration-duration-in-seconds: 30
+    lease-renewal-interval-in-seconds: 10
+    #在eureka中显示ip地址
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    #eureka服务端的地址
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/

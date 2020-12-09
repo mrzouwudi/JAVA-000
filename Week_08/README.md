@@ -1194,3 +1194,432 @@ public class OrderController {
 ShardingSphere proxy的配置文件放在/sharding/proxy_conf目录下
 
 相关代码工程放在/sharding/shardingdb目录下
+
+## Week08 作业题目（周六）：
+2.（必做）基于 hmily TCC 或 ShardingSphere 的 Atomikos XA 实现一个简单的分布式事务应用 demo（二选一），提交到 Github。
+
+这道题，我采用了hmily TCC，大致思路是参考hmily中demo和官方文档进行配置。说明如下：
+（1）这道题，我使用我们现在线上系统的一个场景，是一个兑换礼品的场景。大致背景是，有兑换劵可以兑换商品，每个兑换劵有唯一的劵码（code），可以兑换一种商品。每次兑换可以看作是下订单的过程，不过支付就是检查劵码是否有效以及是否未使用，如果可以进行兑换（这个过程需要订单服务和劵服务进行协助，使用分布式事务）。
+（2）本题使用两个服务一个是订单服务，另一个是劵服务，都向eureka中注册，之间使用openfeign进行通讯。订单服务使用的订单库，其中订单表如下：
+```
+CREATE TABLE `t_order` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '订单标识',
+  `user_id` int(11) NOT NULL COMMENT '用户标识',
+  `product_id` int(11) NOT NULL COMMENT '商品标识',
+  `status` mediumint(9) NOT NULL DEFAULT '0' COMMENT '状态，0-下单未兑换，1-准备兑换，2-兑换失败，3-已兑换',
+  `coupon_code` char(20) NOT NULL COMMENT '劵的密码',
+  `created_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '下单时间',
+  `updated_time` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+```
+劵服务使用的劵库，劵表如下：
+```
+CREATE TABLE `t_coupon` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '劵标识',
+  `product_id` int(11) NOT NULL COMMENT '商品标识',
+  `code` char(20) DEFAULT NULL COMMENT '劵的密码，用于核对',
+  `status` mediumint(9) NOT NULL DEFAULT '0' COMMENT '状态，0-未使用，1-准备使用，2-已使用，3-已作废',
+  `created_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '发劵时间',
+  `updated_time` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_code` (`code`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4
+```
+
+(3) 基本代码有些多，所以下面主要解释hmily相关的部分。
+
+【a】：引入hmily，在POM文件中添加
+```
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>hmily-springcloud</artifactId>
+            <version>2.0.2-RELEASE</version>
+        </dependency>
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>hmily-spring-boot-starter-springcloud</artifactId>
+            <version>2.0.2-RELEASE</version>
+        </dependency>
+```
+【b】：添加相关配置
+
+在resource目录下添加文件applicationContext.xml，内容如下：
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~
+  ~ Copyright 2017-2018 549477611@qq.com(xiaoyu)
+  ~
+  ~ This copyrighted material is made available to anyone wishing to use, modify,
+  ~ copy, or redistribute it subject to the terms and conditions of the GNU
+  ~ Lesser General Public License, as published by the Free Software Foundation.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+  ~ or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+  ~ for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public License
+  ~ along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+  ~
+  -->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context-3.0.xsd
+
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop-3.0.xsd"
+       default-autowire="byName">
+
+    <aop:aspectj-autoproxy expose-proxy="true"/>
+    <bean id = "hmilyTransactionAspect" class="org.dromara.hmily.spring.aop.SpringHmilyTransactionAspect"/>
+    <bean id = "hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
+</beans>
+```
+在resource目录添加文件hmily.yml，内容如下（劵服务下的文件基本一样）：
+```
+hmily:
+  server:
+    configMode: local
+    appName: order-sc
+  #  如果server.configMode eq local 的时候才会读取到这里的配置信息.
+  config:
+    appName: order-sc
+    serializer: kryo
+    contextTransmittalMode: threadLocal
+    scheduledThreadMax: 16
+    scheduledRecoveryDelay: 60
+    scheduledCleanDelay: 60
+    scheduledPhyDeletedDelay: 600
+    scheduledInitDelay: 30
+    recoverDelayTime: 60
+    cleanDelayTime: 180
+    limit: 200
+    retryMax: 10
+    bufferSize: 8192
+    consumerThreads: 16
+    asyncRepository: true
+    autoSql: true
+    phyDeleted: true
+    storeDays: 3
+    repository: mysql
+
+repository:
+  file:
+    path:
+    prefix: /hmily
+
+#metrics:
+#  metricsName: prometheus
+#  host:
+#  port: 9091
+#  async: true
+#  threadCount : 16
+#  jmxConfig:
+```
+在服务的启动类上添加如下的注解：
+```
+@ImportResource({"classpath:applicationContext.xml"})
+```
+订单服务的启动类代码如下：
+```
+package traincamp.hmily.order;
+
+import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.context.annotation.ImportResource;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+@SpringBootApplication
+@EnableFeignClients
+@EnableEurekaClient
+@ImportResource({"classpath:applicationContext.xml"})
+@MapperScan("traincamp.hmily.order.dao")
+@EnableTransactionManagement
+public class OrderApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderApplication.class, args);
+    }
+
+}
+```
+
+【c】：使用hmily的注解的使用，事务的发起是订单服务，接收兑换劵订单开始，其controller如下：
+```
+package traincamp.hmily.order.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import traincamp.hmily.order.entity.Order;
+import traincamp.hmily.order.service.OrderService;
+
+@RestController
+@RequestMapping("/order")
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    @GetMapping("/save")
+    public String saveOrder(@RequestParam("uid")Integer userId,
+                           @RequestParam("pid") Integer productId,
+                           @RequestParam("code") String couponCode) {
+        return orderService.saveOrder(userId,productId, couponCode);
+    }
+
+}
+```
+可以看到实际调用到OrderService，OrderService的实现类是OrderServiceImpl，代码如下：
+```
+package traincamp.hmily.order.service.impl;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import traincamp.hmily.order.client.CouponClient;
+import traincamp.hmily.order.constant.OrderConstant;
+import traincamp.hmily.order.dao.OrderMapper;
+import traincamp.hmily.order.entity.Order;
+import traincamp.hmily.order.service.ExchangeService;
+import traincamp.hmily.order.service.OrderIdGenerateService;
+import traincamp.hmily.order.service.OrderService;
+
+import java.util.Date;
+
+@Service
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+
+    @Autowired
+    private OrderMapper orderMapper;
+
+    @Autowired
+    private OrderIdGenerateService idGenerateService;
+
+    @Autowired
+    private CouponClient couponClient;
+
+    @Autowired
+    private ExchangeService exchangeService;
+
+    @Override
+    public String saveOrder(Integer userId, Integer productId, String couponCode) {
+        Order order = fillNewOrder(userId, productId, couponCode);
+        orderMapper.insertSelective(order);
+        Boolean ret = couponClient.check(productId, couponCode);
+        if(!ret) {
+            return "fail";
+        }
+        exchangeService.exchange(order);
+        return "success";
+    }
+
+    private Order fillNewOrder(Integer userId, Integer productId, String couponCode) {
+        Order order = new Order();
+        order.setUserId(userId);
+        order.setProductId(productId);
+        order.setId(idGenerateService.getId());
+        order.setStatus(OrderConstant.STATUS_CRTEATE);
+        order.setCreatedTime(new Date());
+        order.setCouponCode(couponCode);
+        return order;
+    }
+
+}
+```
+这个部分是仿hmily中的demo，也是调用另一个服务类ExchangeService，其实现类ExchangeServiceImpl如下；
+```
+package traincamp.hmily.order.service.impl;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import traincamp.hmily.order.client.CouponClient;
+import traincamp.hmily.order.constant.OrderConstant;
+import traincamp.hmily.order.dao.OrderMapper;
+import traincamp.hmily.order.entity.Order;
+import traincamp.hmily.order.service.ExchangeService;
+
+import java.util.Date;
+
+@Service
+@Slf4j
+@SuppressWarnings("all")
+public class ExchangeServiceImpl implements ExchangeService {
+
+    @Autowired
+    private OrderMapper orderMapper;
+
+    @Autowired
+    private CouponClient couponClient;
+
+    @Override
+    @HmilyTCC(confirmMethod = "confirmOrderStatus", cancelMethod = "cancelOrderStatus")
+    public String exchange(Order order) {
+        updateOrderStatus(order, OrderConstant.STATUS_PREPARE);
+        couponClient.exchange(order.getProductId(), order.getCouponCode());
+        return "success";
+    }
+
+    private void confirmOrderStatus(Order order) {
+        updateOrderStatus(order, OrderConstant.STATUS_FINISH);
+    }
+
+    private void cancelOrderStatus(Order order) {
+        updateOrderStatus(order, OrderConstant.STATUS_FAIL);
+    }
+
+    private void updateOrderStatus(Order order, Integer status) {
+        order.setStatus(status);
+        order.setUpdatedTime(new Date());
+        orderMapper.updateByPrimaryKeySelective(order);
+    }
+}
+```
+核心是exchange方法，使用了@HmilyTCC注解，其中confirm方法是confirmOrderStatus，cancel方法是cancelOrderStatus。confirmOrderStatus方法是更新状态为已兑换，cancelOrderStatus方法是更新状态为兑换失败。另外，可以看到在exchange中会调用劵服务，这时通过openfeign进行通讯的。下面是CouponClient类：
+```
+package traincamp.hmily.order.client;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+@Component
+@FeignClient(name = "coupon-service")
+public interface CouponClient {
+    @GetMapping("/check")
+    Boolean check(@RequestParam("pid") Integer productId, @RequestParam("code") String code);
+
+    @GetMapping("/exchange")
+    @Hmily
+    Boolean exchange(@RequestParam("pid") Integer productId, @RequestParam("code") String code);
+}
+```
+可以看到exchange上添加@Hmily注解。
+
+现在在看劵服务对应的controller类，如下：
+ ```
+ package traincamp.hmily.coupon.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import traincamp.hmily.coupon.service.CouponService;
+
+@RestController
+public class CouponController {
+
+    @Autowired
+    private CouponService couponService;
+
+    @GetMapping("/coupon")
+    public String coupon() {
+        return "hello";
+    }
+
+    @GetMapping("/check")
+    public Boolean check(@RequestParam("pid") Integer productId, @RequestParam("code")String code) {
+        return couponService.checkCoupon(productId, code);
+    }
+
+    @GetMapping("/exchange")
+    public Boolean exchange(@RequestParam("pid") Integer productId, @RequestParam("code")String code) {
+        return couponService.exchangeCoupon(productId, code);
+    }
+}
+```
+CoupenService的实现类CouponServiceImpl如下：
+```
+package traincamp.hmily.coupon.service.impl;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import traincamp.hmily.coupon.constant.CouponConstant;
+import traincamp.hmily.coupon.dao.CouponMapper;
+import traincamp.hmily.coupon.entity.Coupon;
+import traincamp.hmily.coupon.entity.CouponExample;
+import traincamp.hmily.coupon.service.CouponService;
+
+import java.util.Date;
+import java.util.List;
+
+@Service
+@Slf4j
+public class CouponServiceImpl implements CouponService {
+    @Autowired
+    private CouponMapper couponMapper;
+
+    /**
+     * 验劵，因为劵码是唯一的，因此如果没查到，验劵失败，如果查到，劵的状态如果是未使用，则认为验劵成功，
+     * 并且将将劵的状态置为准备中。
+     * @param productId
+     * @param couponCode
+     * @return
+     */
+    @Override
+    @Transactional
+    public Boolean checkCoupon(Integer productId, String couponCode) {
+        log.info("参数productId：{}， 参数couponCode：{}", productId, couponCode);
+        CouponExample example = new CouponExample();
+        example.or().andCodeEqualTo(couponCode);
+        List<Coupon> couponList = couponMapper.selectByExample(example);
+        Boolean result = CouponConstant.CHECK_FAIL;
+        if (!couponList.isEmpty()) {
+            Coupon coupon = couponList.get(0);
+            if(coupon.getProductId().equals(productId) && coupon.getStatus().equals(CouponConstant.STATUS_NOUSE)) {
+                result = CouponConstant.CHECK_SUCCESS;
+            }
+        }
+        return result;
+    }
+
+    @Override
+    @HmilyTCC(confirmMethod = "confirmExchange", cancelMethod = "cancelExchange")
+    public Boolean exchangeCoupon(Integer productId, String couponCode) {
+        updateCouponStatus(productId, couponCode, CouponConstant.STATUS_PREPARE);
+        return CouponConstant.CHECK_SUCCESS;
+    }
+
+    private void confirmExchange(Integer productId, String couponCode) {
+        updateCouponStatus(productId, couponCode, CouponConstant.STATUS_USED);
+    }
+
+    private void cancelExchange(Integer productId, String couponCode) {
+        updateCouponStatus(productId, couponCode, CouponConstant.STATUS_USED);
+    }
+
+    private void updateCouponStatus(Integer productId, String couponCode, Integer status) {
+        CouponExample example = new CouponExample();
+        example.or().andCodeEqualTo(couponCode).andProductIdEqualTo(productId);
+        Coupon coupon = new Coupon();
+        coupon.setStatus(status);
+        coupon.setUpdatedTime(new Date());
+        couponMapper.updateByExampleSelective(coupon, example);
+    }
+}
+```
+可以看到@HmilyTCC的注解，同样包括了confirm方法和cancel方法，和订单服务中ExchangeServiceImpl类是一样的。
+
+（4） 本题相关代码都在hmily目录下，其中库表结构的sql文件在sql目录下，eureka中心的工程代码放在eureka下，订单服务的工程代码放在order目录下，劵服务的工程代码放在coupon目录下。
+
+注：这部分代码虽然写完了，但是POM文件中库并没有被引入进来，以至于相关注解无法识别。明天还要再调一下。

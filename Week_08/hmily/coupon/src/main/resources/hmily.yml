@@ -1,0 +1,38 @@
+hmily:
+  server:
+    configMode: local
+    appName: coupon-sc
+  #  如果server.configMode eq local 的时候才会读取到这里的配置信息.
+  config:
+    appName: coupon-sc
+    serializer: kryo
+    contextTransmittalMode: threadLocal
+    scheduledThreadMax: 16
+    scheduledRecoveryDelay: 60
+    scheduledCleanDelay: 60
+    scheduledPhyDeletedDelay: 600
+    scheduledInitDelay: 30
+    recoverDelayTime: 60
+    cleanDelayTime: 180
+    limit: 200
+    retryMax: 10
+    bufferSize: 8192
+    consumerThreads: 16
+    asyncRepository: true
+    autoSql: true
+    phyDeleted: true
+    storeDays: 3
+    repository: mysql
+
+repository:
+  file:
+    path:
+    prefix: /hmily
+
+#metrics:
+#  metricsName: prometheus
+#  host:
+#  port: 9091
+#  async: true
+#  threadCount : 16
+#  jmxConfig:
