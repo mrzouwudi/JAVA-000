@@ -1234,13 +1234,25 @@ CREATE TABLE `t_coupon` (
 ```
         <dependency>
             <groupId>org.dromara</groupId>
-            <artifactId>hmily-springcloud</artifactId>
-            <version>2.0.2-RELEASE</version>
-        </dependency>
-        <dependency>
-            <groupId>org.dromara</groupId>
             <artifactId>hmily-spring-boot-starter-springcloud</artifactId>
-            <version>2.0.2-RELEASE</version>
+            <version>2.1.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId></exclusion>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.curator</groupId>
+                    <artifactId>curator-framework</artifactId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>curator-recipes</artifactId>
+                    <groupId>org.apache.curator</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
 ```
 【b】：添加相关配置
@@ -1279,18 +1291,19 @@ CREATE TABLE `t_coupon` (
         http://www.springframework.org/schema/aop/spring-aop-3.0.xsd"
        default-autowire="byName">
 
+    <!--配置扫码hmily框架的包-->
+    <context:component-scan base-package="org.dromara.hmily.*"/>
+    <!--设置开启aspectj-autoproxy-->
     <aop:aspectj-autoproxy expose-proxy="true"/>
-    <bean id = "hmilyTransactionAspect" class="org.dromara.hmily.spring.aop.SpringHmilyTransactionAspect"/>
-    <bean id = "hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
-</beans>
-```
+    <!--配置Hmily启动的bean参数-->
+    <bean id="hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
+</beans>```
 在resource目录添加文件hmily.yml，内容如下（劵服务下的文件基本一样）：
 ```
 hmily:
   server:
     configMode: local
     appName: order-sc
-  #  如果server.configMode eq local 的时候才会读取到这里的配置信息.
   config:
     appName: order-sc
     serializer: kryo
@@ -1310,38 +1323,30 @@ hmily:
     autoSql: true
     phyDeleted: true
     storeDays: 3
-    repository: mysql
+    repository: file
 
 repository:
   file:
     path:
     prefix: /hmily
+```
+这里的hmily的配置文件中选择了local模式，而且事务日志采用的存储是文件方式，如果是mysql，可以进行相应配置，而且表会自动创建。
 
-#metrics:
-#  metricsName: prometheus
-#  host:
-#  port: 9091
-#  async: true
-#  threadCount : 16
-#  jmxConfig:
-```
-在服务的启动类上添加如下的注解：
-```
-@ImportResource({"classpath:applicationContext.xml"})
-```
-订单服务的启动类代码如下：
+在服务的启动类上添加相关的注解，进行引入相关的配置文件，订单服务的启动类代码如下：
 ```
 package traincamp.hmily.order;
 
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
 import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {MongoAutoConfiguration.class, MongoDataAutoConfiguration.class})
 @EnableFeignClients
 @EnableEurekaClient
 @ImportResource({"classpath:applicationContext.xml"})
@@ -1355,6 +1360,12 @@ public class OrderApplication {
 
 }
 ```
+这个启动类有几点需要特别说明：
+1. 如果不是使用MongoDB，请在SpringBootApplication添加exclude说明，之前没有注意到官网例子中这个部分，踩了坑了。
+2. 通过ImportResource，将上面的配置文件applicationContext.xml引入，这样hmily可以通过切面进行分布式事务的控制。
+3. 设置@EnableEurekaClient，可以向注册中心进行注册；设置@EnableFeignClients，可以使用openfeign进行分布式访问
+4. 需要设置@MapperScan获取mybatis的dao类，如果不设置是不能自动扫描的。
+5. 设置@EnableTransactionManagement
 
 【c】：使用hmily的注解的使用，事务的发起是订单服务，接收兑换劵订单开始，其controller如下：
 ```
@@ -1622,4 +1633,8 @@ public class CouponServiceImpl implements CouponService {
 
 （4） 本题相关代码都在hmily目录下，其中库表结构的sql文件在sql目录下，eureka中心的工程代码放在eureka下，订单服务的工程代码放在order目录下，劵服务的工程代码放在coupon目录下。
 
-注：这部分代码虽然写完了，但是POM文件中库并没有被引入进来，以至于相关注解无法识别。明天还要再调一下。
+
+在周五（11日）终于把程序跑起来了，后面需要增加几个场景的测试，摸索各种情况。这里有几点体会：
+1. 一定要仔细看官方文档
+2. 一定要仔细看官方实例，有时候文档有些点没有提到，但是例子中是有体现的
+3. 一定要关注群里，有小伙伴会遇到同样的问题，他们是如何解决的

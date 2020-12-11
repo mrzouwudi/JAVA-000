@@ -1,8 +1,6 @@
 server:
   port: 7002
-ribbon:
-  ReadTimeout: 60000
-  ConnectTimeout: 60000
+
 eureka:
   instance:
     lease-expiration-duration-in-seconds: 30

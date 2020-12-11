@@ -22,12 +22,49 @@ hmily:
     autoSql: true
     phyDeleted: true
     storeDays: 3
-    repository: mysql
+    repository: file
 
 repository:
+#  database:
+#    driverClassName: com.mysql.jdbc.Driver
+#    url: jdbc:mysql://localhost:3306/hmily?useUnicode=true&characeterEncoding=utf-8&serverTimezone=UTC
+#    username: root
+#    password: root
+#    maxActive: 20
+#    minIdle: 10
+#    connectionTimeout: 30000
+#    idleTimeout: 600000
+#    maxLifetime: 1800000
   file:
     path:
     prefix: /hmily
+#  zookeeper:
+#    host: localhost:2181
+#    sessionTimeOut: 1000
+#    rootPath: /hmily
+#  redis:
+#    cluster: false
+#    sentinel: false
+#    clusterUrl:
+#    sentinelUrl:
+#    masterName:
+#    hostName:
+#    port:
+#    password:
+#    maxTotal: 8
+#    maxIdle: 8
+#    minIdle: 2
+#    maxWaitMillis: -1
+#    minEvictableIdleTimeMillis: 1800000
+#    softMinEvictableIdleTimeMillis: 1800000
+#    numTestsPerEvictionRun: 3
+#    testOnCreate: false
+#    testOnBorrow: false
+#    testOnReturn: false
+#    testWhileIdle: false
+#    timeBetweenEvictionRunsMillis: -1
+#    blockWhenExhausted: true
+#    timeOut: 1000
 
 #metrics:
 #  metricsName: prometheus

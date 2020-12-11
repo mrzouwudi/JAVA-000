@@ -30,7 +30,14 @@
         http://www.springframework.org/schema/aop/spring-aop-3.0.xsd"
        default-autowire="byName">
 
-    <aop:aspectj-autoproxy expose-proxy="true"/>
+<!--    <aop:aspectj-autoproxy expose-proxy="true"/>
     <bean id = "hmilyTransactionAspect" class="org.dromara.hmily.spring.aop.SpringHmilyTransactionAspect"/>
-    <bean id = "hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
+    <bean id = "hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>-->
+
+    <!--配置扫码hmily框架的包-->
+    <context:component-scan base-package="org.dromara.hmily.*"/>
+    <!--设置开启aspectj-autoproxy-->
+    <aop:aspectj-autoproxy expose-proxy="true"/>
+    <!--配置Hmily启动的bean参数-->
+    <bean id="hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
 </beans>
