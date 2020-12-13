@@ -1297,7 +1297,8 @@ CREATE TABLE `t_coupon` (
     <aop:aspectj-autoproxy expose-proxy="true"/>
     <!--配置Hmily启动的bean参数-->
     <bean id="hmilyApplicationContextAware" class="org.dromara.hmily.spring.HmilyApplicationContextAware"/>
-</beans>```
+</beans>
+```
 在resource目录添加文件hmily.yml，内容如下（劵服务下的文件基本一样）：
 ```
 hmily:
