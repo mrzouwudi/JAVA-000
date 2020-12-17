@@ -1,5 +1,6 @@
 package io.kimmking.rpcfx.demo.consumer;
 
+import io.kimmking.rpcfx.client.NettyRpcClient;
 import io.kimmking.rpcfx.client.Rpcfx;
 import io.kimmking.rpcfx.demo.api.Order;
 import io.kimmking.rpcfx.demo.api.OrderService;
@@ -28,6 +29,7 @@ public class RpcfxClientApplication {
 		Order order = orderService.findOrderById(1992129);
 		System.out.println(String.format("find order name=%s, amount=%f",order.getName(),order.getAmount()));
 
+		NettyRpcClient.stop();
 		// 新加一个OrderService
 
 //		SpringApplication.run(RpcfxClientApplication.class, args);

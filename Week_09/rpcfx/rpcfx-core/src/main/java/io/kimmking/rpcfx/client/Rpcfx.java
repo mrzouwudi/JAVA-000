@@ -70,6 +70,7 @@ public final class Rpcfx {
         public static final MediaType JSONTYPE = MediaType.get("application/json; charset=utf-8");
         private final Class<?> serviceClass;
         private final String url;
+
         public ServiceInvocationHandler(Class<?> serviceClass, String url) {
             this.serviceClass = serviceClass;
             this.url = url;

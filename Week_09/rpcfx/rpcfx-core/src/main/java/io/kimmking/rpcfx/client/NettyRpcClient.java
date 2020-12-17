@@ -17,16 +17,27 @@ import io.netty.handler.codec.http.*;
 import io.netty.util.AttributeKey;
 
 import java.net.URI;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class NettyRpcClient {
-    public static RpcfxResponse rpcCall(RpcfxRequest req, String url) {
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+
+    static EventLoopGroup workerGroup = new NioEventLoopGroup();
+    static Bootstrap bootstrap = null;
+    static ThreadPoolExecutor executor;
+
+    static {
+        start();
+        executor = getThreadPoolExecutor();
+    }
+
+    private static void start() {
         try {
-            Bootstrap b = new Bootstrap();
-            b.group(workerGroup);
-            b.channel(NioSocketChannel.class);
-            b.option(ChannelOption.SO_KEEPALIVE, true);
-            b.handler(new ChannelInitializer<SocketChannel>() {
+            bootstrap = new Bootstrap();
+            bootstrap.group(workerGroup);
+            bootstrap.channel(NioSocketChannel.class);
+            bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
+            bootstrap.handler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 public void initChannel(SocketChannel ch) throws Exception {
                     ch.pipeline().addLast(new HttpResponseDecoder());
@@ -34,10 +45,40 @@ public class NettyRpcClient {
                     ch.pipeline().addLast(new RpcHttpClientHandler());
                 }
             });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
+    private static ThreadPoolExecutor getThreadPoolExecutor() {
+        int coreSize = Runtime.getRuntime().availableProcessors();
+        int maxSize = coreSize * 2;
+        BlockingQueue<Runnable> workQuee = new LinkedBlockingQueue<>(500);
+        ThreadFactory threaFacorty = new CustomThreaFacorty();
+        return new ThreadPoolExecutor(coreSize, maxSize, 1, TimeUnit.MINUTES,
+                workQuee, threaFacorty);
+    }
+
+    public static void stop() {
+        executor.shutdown();
+        workerGroup.shutdownGracefully();
+    }
+
+    public static RpcfxResponse rpcCall(final RpcfxRequest req, final String url) {
+        FutureTask<RpcfxResponse> futureTask = new FutureTask<RpcfxResponse>(() -> request(req, url));
+        executor.submit(futureTask);
+        try {
+            return futureTask.get(1000, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            throw new RpcfxException(e);
+        }
+    }
+
+    private static RpcfxResponse request(RpcfxRequest req, String url) {
+        try {
             URI uri = new URI(url);
             // Start the client.
-            ChannelFuture f = b.connect(uri.getHost(), uri.getPort()).sync();
+            ChannelFuture channelFuture = bootstrap.connect(uri.getHost(), uri.getPort()).sync();
 
             String reqJson = JSON.toJSONString(req);
             DefaultFullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
@@ -49,17 +90,27 @@ public class NettyRpcClient {
             request.headers().set(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=UTF-8");
             request.headers().set(HttpHeaders.Names.CONTENT_LENGTH, request.content().readableBytes());
 
-            f.channel().write(request);
-            f.channel().flush();
-            f.channel().closeFuture().sync();
+            channelFuture.channel().write(request);
+            channelFuture.channel().flush();
+            channelFuture.channel().closeFuture().sync();
             AttributeKey<String> key = AttributeKey.valueOf(RpcClientConstant.RPC_CLIENT_SERVER_DATA);
-            Object result = f.channel().attr(key).get();
+            Object result = channelFuture.channel().attr(key).get();
             return JSON.parseObject(result.toString(), RpcfxResponse.class);
         } catch (Exception e) {
-            throw new RpcfxException(e);
+            e.printStackTrace();
         }
-        finally {
-            workerGroup.shutdownGracefully();
+        return null;
+    }
+
+    private static class CustomThreaFacorty implements ThreadFactory {
+        private AtomicInteger serial = new AtomicInteger(0);
+
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread thread = new Thread(r);
+            thread.setDaemon(false);
+            thread.setName("ClientWorkThread-" + serial.getAndIncrement());
+            return thread;
         }
     }
 }
