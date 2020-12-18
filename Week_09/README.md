@@ -15,6 +15,7 @@
 
 修改的地方包括，rpcfx-core中的类RpcfxInvoker，其中RpcfxResponse方法，要通过Class.forName方法获得请求的类的接口类型。然后通过rpcfx-demo-provider下的DemoResolver中的resole方法，直接使用applicationContext.getBean(clazz)根据类型返回响应的bean。最后将原本RpcfxServerApplication中bean配置去掉，直接在相应的service接口实现类添加@Service注解。以下为源码部分：
 rpcfx-core中的类RpcfxInvoker
+
 ```
 package io.kimmking.rpcfx.server;
 
@@ -412,3 +413,77 @@ public class RpcHttpClientHandler extends ChannelInboundHandlerAdapter {
 ```
 
 注：本题的代码在rpcfx目录下
+
+Week09 作业题目（周六）：
+
+3.（必做）结合 dubbo+hmily，实现一个 TCC 外汇交易处理，代码提交到 GitHub:
+
+用户 A 的美元账户和人民币账户都在 A 库，使用 1 美元兑换 7 人民币 ;
+用户 B 的美元账户和人民币账户都在 B 库，使用 7 人民币兑换 1 美元 ;
+设计账户表，冻结资产表，实现上述两个本地事务的分布式事务。
+
+本题目前还在编码中，来不及提交全部内容，先说一下思路：
+
+（1）本题分成两种服务，一个是账户（account）服务，和兑换（exchange）服务。其中将account又拆成人民币账户服务和美元账户服务。对于账户服务，基本操作是转出和转入，转出需要账户余额（balance）大于转出的金额。兑换服务就是根据汇率分别计算相应账户转出和转入的金额，然后调用人民币账户和美元账户进行相应的转出和转入操作。为了能够整个服务协助过程中转出操作正常进行，需要冻结传出的金额。这里需要说明一下为了便于进行计算，我在计算过程中和数据库中金额（元）是放到了10000倍，只保留整数。最后显示时再除以10000.
+
+（2）因考虑到账户和账户冻结表需要进行分库，因此将账户库分成两个库accountdb0和accountdb1，账户服务是通过shardingsphere proxy进行连接。分库是根据用户ID模2进行分库，人民币账户表、美元账户表、人民币冻结表和美元冻结表中都包含了用户ID字段，而且账户接口的对于的数据库sql都包含了user_id的判断条件。以下是这四张表的建表语句
+
+```sql
+CREATE TABLE `t_cny_account` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '账户ID',
+  `user_id` bigint(20) unsigned NOT NULL COMMENT '用户标识',
+  `balance` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '考虑到汇率计算，金额（元）放到10000倍',
+  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+
+CREATE TABLE `t_cny_freeze` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '标识',
+  `user_id` bigint(20) NOT NULL COMMENT '用户标识',
+  `account_id` bigint(20) NOT NULL COMMENT '人民币账户标识',
+  `amount` bigint(20) NOT NULL COMMENT '冻结金额，该数值为金额（元）放大10000倍',
+  `exchange_id` bigint(20) NOT NULL COMMENT '关联的兑换交易的标识',
+  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+
+
+CREATE TABLE `t_usd_account` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '账户ID',
+  `user_id` bigint(20) unsigned NOT NULL COMMENT '用户标识',
+  `balance` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT '考虑到汇率计算，金额（元）放到10000倍',
+  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+
+CREATE TABLE `t_usd_freeze` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '标识',
+  `user_id` bigint(20) NOT NULL COMMENT '用户标识',
+  `account_id` bigint(20) NOT NULL COMMENT '美元账户标识',
+  `amount` bigint(20) NOT NULL COMMENT '冻结金额，该数值为金额（元）放大10000倍',
+  `exchange_id` bigint(20) NOT NULL COMMENT '关联的兑换交易的标识',
+  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
+```
+
+（3）兑换也有兑换的库，其中有兑换记录表。
+
+```sql
+CREATE TABLE `t_exchange` (
+  `id` bigint(20) unsigned NOT NULL COMMENT '交易记录ID',
+  `user_id` bigint(20) unsigned NOT NULL COMMENT '用户ID',
+  `out_account_id` bigint(20) unsigned NOT NULL COMMENT '兑换兑出的账户ID',
+  `out_currency_type` char(4) NOT NULL COMMENT '货币代码，兑出的币种',
+  `out_amount` decimal(10,0) NOT NULL COMMENT '兑出的交易金额',
+  `in_account_id` bigint(20) NOT NULL COMMENT '兑换兑入的账户ID',
+  `in_currency_type` char(4) NOT NULL COMMENT '货币代码，被兑换成的币种',
+  `in_amount` decimal(10,0) NOT NULL COMMENT '兑入的交易总额',
+  `status` int(11) NOT NULL COMMENT '状态.0-创建，1-准备，2-兑换成功，3-失败',
+  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00' COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+```
+
