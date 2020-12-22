@@ -1,5 +1,5 @@
 # 作业说明
-## Week08 作业题目（周四）：
+## Week09 作业题目（周六）：
 3.（必做）改造自定义 RPC 的程序，提交到 GitHub：
 
 
@@ -414,7 +414,7 @@ public class RpcHttpClientHandler extends ChannelInboundHandlerAdapter {
 
 注：本题的代码在rpcfx目录下
 
-Week09 作业题目（周六）：
+## Week09 作业题目（周日）：
 
 3.（必做）结合 dubbo+hmily，实现一个 TCC 外汇交易处理，代码提交到 GitHub:
 
