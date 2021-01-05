@@ -326,3 +326,6 @@ repl_backlog_histlen:0
 
 （2）sentinel 高可用
 
+（a）先配置一主二从，配置文件和配置启动方式同上，这里不再赘述。
+
+（b）配置
