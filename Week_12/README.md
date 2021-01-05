@@ -328,4 +328,312 @@ repl_backlog_histlen:0
 
 （a）先配置一主二从，配置文件和配置启动方式同上，这里不再赘述。
 
-（b）配置
+（b）配置sentinel，写三个sentinel的配置文件，sentinel26379.conf、sentinel26380.conf、sentinel26381.conf。分别如下：
+
+sentinel26379.conf
+
+```
+port 26379
+sentinel myid 20c656411e0b231f93aa9f12ce6e118fd39b165f
+sentinel monitor mymaster 127.0.0.1 6380 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel failover-timeout mymaster 180000
+sentinel parallel-syncs mymaster 1
+```
+
+sentinel26380.conf
+
+```
+port 26380
+sentinel myid 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317
+sentinel monitor mymaster 127.0.0.1 6380 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel failover-timeout mymaster 180000
+sentinel parallel-syncs mymaster 1
+```
+
+sentinel26381.conf
+
+```
+port 26381
+sentinel myid 6f16c41cf571eb4a3ad20650d13dc1874cf18cd4
+sentinel monitor mymaster 127.0.0.1 6380 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel failover-timeout mymaster 180000
+sentinel parallel-syncs mymaster 1
+```
+
+注：这三个命令行中myid可以不写，现在这个是执行之后自动生成，同时也会生产其他一些配置，这个部分后面会提到。
+
+（c）启动
+
+启动一主二从，方式和前面的一样，这里不再赘述。
+
+启动setinel，启动三个控制台分别运行下面的命令
+
+```
+redis-server.exe sentinel26379.conf --sentinel
+redis-server.exe sentinel26380.conf --sentinel
+redis-server.exe sentinel26381.conf --sentinel
+```
+
+因为，之前执行过程中已经将6380切换成master，而6379和6381是slave。现在进入redis客户端进行验证执行
+
+```
+redis-cli -h 127.0.0.1 -p 6380
+```
+
+进入客户端后，执行info replication，显示如下：
+
+```
+127.0.0.1:6380> info replication
+# Replication
+role:master
+connected_slaves:2
+slave0:ip=127.0.0.1,port=6379,state=online,offset=40109,lag=1
+slave1:ip=127.0.0.1,port=6381,state=online,offset=40242,lag=0
+master_repl_offset:40389
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:40388
+```
+
+开启另一个控制台，执行redis-cli -h 127.0.0.1 -p 6379，进入redis客户端后，执行info replication，显示如下：
+
+```
+127.0.0.1:6379> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6380
+master_link_status:up
+master_last_io_seconds_ago:1
+master_sync_in_progress:0
+slave_repl_offset:29266
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_repl_offset:0
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:0
+```
+
+然后另一个控制台，执行redis-cli -h 127.0.0.1 -p 6381，进入redis客户端后，执行info replication，显示如下：
+
+```
+127.0.0.1:6381> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6380
+master_link_status:up
+master_last_io_seconds_ago:1
+master_sync_in_progress:0
+slave_repl_offset:125047
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_repl_offset:0
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:0
+```
+
+可以看出确实一主二从，master是6380，slave是6379和6381。
+
+（d）切换主从
+
+现在将master6380下线，在客户端执行shutdown。
+
+等60秒，sentinel判断master下线，重新选择新的master，这次选的是6381。可以从sentinel的控制输出看见。
+
+26379的sentinel的控制台显示如下：
+
+```
+[4624] 05 Jan 22:34:24.254 # +sdown master mymaster 127.0.0.1 6380
+[4624] 05 Jan 22:34:24.344 # +new-epoch 1
+[4624] 05 Jan 22:34:24.348 # +vote-for-leader 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 1
+[4624] 05 Jan 22:34:25.389 # +odown master mymaster 127.0.0.1 6380 #quorum 3/2
+[4624] 05 Jan 22:34:25.389 # Next failover delay: I will not start a failover before Tue Jan 05 22:40:24 2021
+[4624] 05 Jan 22:34:25.464 # +config-update-from sentinel 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 127.0.0.1 26380 @ mymaster 127.0.0.1 6380
+[4624] 05 Jan 22:34:25.465 # +switch-master mymaster 127.0.0.1 6380 127.0.0.1 6381
+[4624] 05 Jan 22:34:25.468 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6381
+[4624] 05 Jan 22:34:25.469 * +slave slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+[4624] 05 Jan 22:35:25.536 # +sdown slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+```
+
+26380的sentinel的控制台显示如下：
+
+```
+[2504] 05 Jan 22:34:24.273 # +sdown master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.336 # +odown master mymaster 127.0.0.1 6380 #quorum 2/2
+[2504] 05 Jan 22:34:24.336 # +new-epoch 1
+[2504] 05 Jan 22:34:24.336 # +try-failover master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.340 # +vote-for-leader 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 1
+[2504] 05 Jan 22:34:24.349 # 6f16c41cf571eb4a3ad20650d13dc1874cf18cd4 voted for 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 1
+[2504] 05 Jan 22:34:24.349 # 20c656411e0b231f93aa9f12ce6e118fd39b165f voted for 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 1
+[2504] 05 Jan 22:34:24.431 # +elected-leader master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.431 # +failover-state-select-slave master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.489 # +selected-slave slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.489 * +failover-state-send-slaveof-noone slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:24.549 * +failover-state-wait-promotion slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:25.385 # +promoted-slave slave 127.0.0.1:6381 127.0.0.1 6381 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:25.386 # +failover-state-reconf-slaves master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:25.463 * +slave-reconf-sent slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:26.448 * +slave-reconf-inprog slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:26.449 * +slave-reconf-done slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:26.520 # -odown master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:26.520 # +failover-end master mymaster 127.0.0.1 6380
+[2504] 05 Jan 22:34:26.520 # +switch-master mymaster 127.0.0.1 6380 127.0.0.1 6381
+[2504] 05 Jan 22:34:26.521 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6381
+[2504] 05 Jan 22:34:26.521 * +slave slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+[2504] 05 Jan 22:35:26.571 # +sdown slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+```
+
+26381的sentinel的控制台显示如下：
+
+```
+[22968] 05 Jan 22:34:24.307 # +sdown master mymaster 127.0.0.1 6380
+[22968] 05 Jan 22:34:24.344 # +new-epoch 1
+[22968] 05 Jan 22:34:24.348 # +vote-for-leader 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 1
+[22968] 05 Jan 22:34:24.370 # +odown master mymaster 127.0.0.1 6380 #quorum 3/2
+[22968] 05 Jan 22:34:24.370 # Next failover delay: I will not start a failover before Tue Jan 05 22:40:24 2021
+[22968] 05 Jan 22:34:25.464 # +config-update-from sentinel 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317 127.0.0.1 26380 @ mymaster 127.0.0.1 6380
+[22968] 05 Jan 22:34:25.467 # +switch-master mymaster 127.0.0.1 6380 127.0.0.1 6381
+[22968] 05 Jan 22:34:25.469 * +slave slave 127.0.0.1:6379 127.0.0.1 6379 @ mymaster 127.0.0.1 6381
+[22968] 05 Jan 22:34:25.470 * +slave slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+[22968] 05 Jan 22:35:25.519 # +sdown slave 127.0.0.1:6380 127.0.0.1 6380 @ mymaster 127.0.0.1 6381
+```
+
+可以看到发现下线以及判断线和投票选举新的master过程。
+
+在6381的客户端执行info replication
+
+```
+127.0.0.1:6381> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6379,state=online,offset=16775,lag=0
+master_repl_offset:16908
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:16907
+```
+
+已经是master了。
+
+在6379的客户端执行info replication
+
+```
+127.0.0.1:6379> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6381
+master_link_status:up
+master_last_io_seconds_ago:0
+master_sync_in_progress:0
+slave_repl_offset:20261
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_repl_offset:0
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:0
+```
+
+已经是6381的slave了。
+
+这时，重新启动6380。在控制台执行redis-server.exe redis.windows6380.conf启动redis服务
+
+在新的控制台执行redis-cli -h 127.0.0.1 -p 6380，进入6380的客户端，执行info replication
+
+```
+127.0.0.1:6380> info replication
+# Replication
+role:slave
+master_host:127.0.0.1
+master_port:6381
+master_link_status:up
+master_last_io_seconds_ago:0
+master_sync_in_progress:0
+slave_repl_offset:154635
+slave_priority:100
+slave_read_only:1
+connected_slaves:0
+master_repl_offset:0
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:0
+```
+
+可以看到6380已经是slave了。
+
+现在看一下三个sentinel的配置文件
+
+sentinel26379.conf
+
+```
+port 26379
+sentinel myid 20c656411e0b231f93aa9f12ce6e118fd39b165f
+sentinel monitor mymaster 127.0.0.1 6381 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel config-epoch mymaster 1
+sentinel leader-epoch mymaster 1
+# Generated by CONFIG REWRITE
+dir "F:\\software\\Redis-x64-3.2.100"
+sentinel known-slave mymaster 127.0.0.1 6380
+sentinel known-slave mymaster 127.0.0.1 6379
+sentinel known-sentinel mymaster 127.0.0.1 26381 6f16c41cf571eb4a3ad20650d13dc1874cf18cd4
+sentinel known-sentinel mymaster 127.0.0.1 26380 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317
+sentinel current-epoch 1
+```
+
+sentinel26380.conf
+
+```
+port 26380
+sentinel myid 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317
+sentinel monitor mymaster 127.0.0.1 6381 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel config-epoch mymaster 1
+sentinel leader-epoch mymaster 1
+# Generated by CONFIG REWRITE
+dir "F:\\software\\Redis-x64-3.2.100"
+sentinel known-slave mymaster 127.0.0.1 6379
+sentinel known-slave mymaster 127.0.0.1 6380
+sentinel known-sentinel mymaster 127.0.0.1 26379 20c656411e0b231f93aa9f12ce6e118fd39b165f
+sentinel known-sentinel mymaster 127.0.0.1 26381 6f16c41cf571eb4a3ad20650d13dc1874cf18cd4
+sentinel current-epoch 1
+```
+
+sentinel26381.conf
+
+```
+port 26381
+sentinel myid 6f16c41cf571eb4a3ad20650d13dc1874cf18cd4
+sentinel monitor mymaster 127.0.0.1 6381 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel config-epoch mymaster 1
+sentinel leader-epoch mymaster 1
+# Generated by CONFIG REWRITE
+dir "F:\\software\\Redis-x64-3.2.100"
+sentinel known-slave mymaster 127.0.0.1 6380
+sentinel known-slave mymaster 127.0.0.1 6379
+sentinel known-sentinel mymaster 127.0.0.1 26380 04a6bd1cb0f28cab2a0388e41adb587b8dd0c317
+sentinel known-sentinel mymaster 127.0.0.1 26379 20c656411e0b231f93aa9f12ce6e118fd39b165f
+sentinel current-epoch 1
+```
+
+注：sentinel的三个配置文件放在sentinel目录下，另外，运行后被sentinel自动修改后的配置文件放在/sentinel/运行后/的目录下。
+
+（3）Cluster 集群
