@@ -637,3 +637,384 @@ sentinel current-epoch 1
 注：sentinel的三个配置文件放在sentinel目录下，另外，运行后被sentinel自动修改后的配置文件放在/sentinel/运行后/的目录下。
 
 （3）Cluster 集群
+
+（a）通过Ruby脚本搭建Cluster集群，先搭建Ruby环境。因为使用的是Win10环境，需要在https://rubyinstaller.org/downloads/ 上下载rubyinstaller-2.7.2-1-x64.exe。然后根据https://rubygems.org/gems/redis/versions/3.2.0， 安装ruby的redis驱动
+
+```
+gem install redis -v 3.2.0
+```
+
+下载Redis官方提供的创建Redis集群的ruby脚本文件redis-trib.rb，路径如下：
+
+https://raw.githubusercontent.com/MSOpenTech/redis/3.0/src/redis-trib.rb
+
+将该脚本放置到redis安装目录下。
+
+（b）配置集群
+
+这次配置集群，计划配置三主三从的集群方式。
+
+因此需要配置6个Redis服务。写6个配置文件在Redis目录下，分别是redis.windows-service-6380.conf、redis.windows-service-6381.conf、redis.windows-service-6382.conf、redis.windows-service-6383.conf、redis.windows-service-6384.conf、redis.windows-service-6385.conf，具体内容如下：
+
+redis.windows-service-6380.conf
+
+```
+port 6380
+loglevel notice
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6380_log.txt"
+appendonly yes
+appendfilename "appendonly.6380.aof"
+cluster-enabled yes
+cluster-config-file nodes.6380.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+redis.windows-service-6381.conf
+
+```
+port 6381
+loglevel notice    
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6381_log.txt"
+appendonly yes
+appendfilename "appendonly.6381.aof"
+cluster-enabled yes
+cluster-config-file nodes.6381.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+redis.windows-service-6382.conf
+
+```
+port 6382
+loglevel notice
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6382_log.txt"
+appendonly yes
+appendfilename "appendonly.6382.aof"
+cluster-enabled yes
+cluster-config-file nodes.6382.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+redis.windows-service-6383.conf
+
+```
+port 6383
+loglevel notice    
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6383_log.txt"
+appendonly yes
+appendfilename "appendonly.6383.aof"
+cluster-enabled yes
+cluster-config-file nodes.6383.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+redis.windows-service-6384.conf
+
+```
+port 6384
+loglevel notice
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6384_log.txt"
+appendonly yes
+appendfilename "appendonly.6384.aof"
+cluster-enabled yes
+cluster-config-file nodes.6384.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+redis.windows-service-6385.conf
+
+```
+port 6385
+loglevel notice
+logfile "F:/software/Redis-x64-3.2.100/Logs/redis6385_log.txt"
+appendonly yes
+appendfilename "appendonly.6385.aof"
+cluster-enabled yes
+cluster-config-file nodes.6385.conf
+cluster-node-timeout 15000
+cluster-slave-validity-factor 10
+cluster-migration-barrier 1
+cluster-require-full-coverage yes
+```
+
+（c）搭建
+
+先开启六个控制台终端，分别执行下面的命令，启动六个redis服务。
+
+```
+redis-server.exe redis.windows-service-6380.conf
+redis-server.exe redis.windows-service-6381.conf
+redis-server.exe redis.windows-service-6382.conf
+redis-server.exe redis.windows-service-6383.conf
+redis-server.exe redis.windows-service-6384.conf
+redis-server.exe redis.windows-service-6385.conf
+```
+
+执行redis-trib.rb，搭建集群，开启一个控制台终端，执行下面的命令
+
+```
+redis-trib.rb create --replicas 1 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 127.0.0.1:6383 127.0.0.1:6384 127.0.0.1:6385
+```
+
+执行完毕后，控制台输出
+
+```
+F:\software\Redis-x64-3.2.100>redis-trib.rb create --replicas 1 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 127.0.0.1:6383 127.0.0.1:6384 127.0.0.1:6385
+>>> Creating cluster
+Connecting to node 127.0.0.1:6380: OK
+Connecting to node 127.0.0.1:6381: OK
+Connecting to node 127.0.0.1:6382: OK
+Connecting to node 127.0.0.1:6383: OK
+Connecting to node 127.0.0.1:6384: OK
+Connecting to node 127.0.0.1:6385: OK
+>>> Performing hash slots allocation on 6 nodes...
+Using 3 masters:
+127.0.0.1:6380
+127.0.0.1:6381
+127.0.0.1:6382
+Adding replica 127.0.0.1:6383 to 127.0.0.1:6380
+Adding replica 127.0.0.1:6384 to 127.0.0.1:6381
+Adding replica 127.0.0.1:6385 to 127.0.0.1:6382
+M: 2e7d21393bfbfb6f0555a74840452e1925d72128 127.0.0.1:6380
+   slots:0-5460 (5461 slots) master
+M: 04e87f0a9c7dd3e77979e5e93988d3b8838bf8db 127.0.0.1:6381
+   slots:5461-10922 (5462 slots) master
+M: c906b59f8e13cf52fc22b8843590f661aea39531 127.0.0.1:6382
+   slots:10923-16383 (5461 slots) master
+S: 6513356e49986489af2ccd37d9cb369f38107f54 127.0.0.1:6383
+   replicates 2e7d21393bfbfb6f0555a74840452e1925d72128
+S: f10666d4a43966139c6d74efeeb0fe82dbdc4423 127.0.0.1:6384
+   replicates 04e87f0a9c7dd3e77979e5e93988d3b8838bf8db
+S: 940085ce76e0aff7a47a0939bff4ecbdb5017833 127.0.0.1:6385
+   replicates c906b59f8e13cf52fc22b8843590f661aea39531
+Can I set the above configuration? (type 'yes' to accept): yes
+>>> Nodes configuration updated
+>>> Assign a different config epoch to each node
+>>> Sending CLUSTER MEET messages to join the cluster
+Waiting for the cluster to join....
+>>> Performing Cluster Check (using node 127.0.0.1:6380)
+M: 2e7d21393bfbfb6f0555a74840452e1925d72128 127.0.0.1:6380
+   slots:0-5460 (5461 slots) master
+M: 04e87f0a9c7dd3e77979e5e93988d3b8838bf8db 127.0.0.1:6381
+   slots:5461-10922 (5462 slots) master
+M: c906b59f8e13cf52fc22b8843590f661aea39531 127.0.0.1:6382
+   slots:10923-16383 (5461 slots) master
+M: 6513356e49986489af2ccd37d9cb369f38107f54 127.0.0.1:6383
+   slots: (0 slots) master
+   replicates 2e7d21393bfbfb6f0555a74840452e1925d72128
+M: f10666d4a43966139c6d74efeeb0fe82dbdc4423 127.0.0.1:6384
+   slots: (0 slots) master
+   replicates 04e87f0a9c7dd3e77979e5e93988d3b8838bf8db
+M: 940085ce76e0aff7a47a0939bff4ecbdb5017833 127.0.0.1:6385
+   slots: (0 slots) master
+   replicates c906b59f8e13cf52fc22b8843590f661aea39531
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+```
+
+此时，集群已搭建完毕。
+
+（d）访问操作
+
+开启一个控制台终端，执行
+
+```
+redis-cli -c -h 127.0.0.1 -p 6380
+```
+
+注意一定要加“-c”，否则会在后面访问过程报错。
+
+可以尝试获取key，添加一个key，如下：
+
+```
+F:\software\Redis-x64-3.2.100>redis-cli -c -h 127.0.0.1 -p 6380
+127.0.0.1:6380> keys *
+(empty list or set)
+127.0.0.1:6380> set key1 1
+-> Redirected to slot [9189] located at 127.0.0.1:6381
+OK
+127.0.0.1:6381> get key1
+"1"
+```
+
+可以看到新加入的key1，已经放到6381（当前连接的是6380）。注意，此时客户端连接已经重定向到了6381，获取key1，可以获取到。
+
+如果重新连接到6380，再获取key1，会先重定向到6381，再次输入“get key1”，才能获取到。如下：
+
+```
+F:\software\Redis-x64-3.2.100>redis-cli -c -h 127.0.0.1 -p 6380
+127.0.0.1:6380> get key1
+-> Redirected to slot [9189] located at 127.0.0.1:6381
+"1"
+127.0.0.1:6381> get key1
+"1"
+```
+
+执行CLUSTER INFO，显示如下:
+
+```
+127.0.0.1:6381> CLUSTER INFO
+cluster_state:ok
+cluster_slots_assigned:16384
+cluster_slots_ok:16384
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:6
+cluster_size:3
+cluster_current_epoch:6
+cluster_my_epoch:2
+cluster_stats_messages_sent:2017
+cluster_stats_messages_received:2017
+```
+
+可以看到6个节点，集群的size是3。
+
+再执行cluster nodes，显示如下:
+
+```
+127.0.0.1:6381> cluster nodes
+2e7d21393bfbfb6f0555a74840452e1925d72128 127.0.0.1:6380 master - 0 1609902203205 1 connected 0-5460
+f10666d4a43966139c6d74efeeb0fe82dbdc4423 127.0.0.1:6384 slave 04e87f0a9c7dd3e77979e5e93988d3b8838bf8db 0 1609902202198 5 connected
+04e87f0a9c7dd3e77979e5e93988d3b8838bf8db 127.0.0.1:6381 myself,master - 0 0 2 connected 5461-10922
+940085ce76e0aff7a47a0939bff4ecbdb5017833 127.0.0.1:6385 slave c906b59f8e13cf52fc22b8843590f661aea39531 0 1609902198167 6 connected
+6513356e49986489af2ccd37d9cb369f38107f54 127.0.0.1:6383 slave 2e7d21393bfbfb6f0555a74840452e1925d72128 0 1609902199175 4 connected
+c906b59f8e13cf52fc22b8843590f661aea39531 127.0.0.1:6382 master - 0 1609902201191 3 connected 10923-16383
+```
+
+可以看到，6380是master，槽位0-5460，slave是6383。注意6383的slave的id和6380是一致的。
+
+6381是master，槽位是5461-10922，slave是6384。
+
+6382是master，槽位是10923-16383，slave是6385。
+
+在6380的客户端上执行info replication，显示：
+
+```
+127.0.0.1:6380> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6383,state=online,offset=2493,lag=0
+master_repl_offset:2493
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:2492
+```
+
+在6381的客户端上执行info replication，显示：
+
+```
+127.0.0.1:6381> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6384,state=online,offset=2448,lag=0
+master_repl_offset:2448
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:2447
+```
+
+在6382的客户端上执行info replication，显示：
+
+```
+127.0.0.1:6382> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6385,state=online,offset=2661,lag=0
+master_repl_offset:2661
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:2660
+```
+
+可以验证master和slave的对应关系。
+
+现在，可以将6381下线，然后依然在6382的客户获取key1，执行“get key1“，执行结果如下:
+
+```
+127.0.0.1:6382> get key1
+-> Redirected to slot [9189] located at 127.0.0.1:6384
+"1"
+127.0.0.1:6384> get key1
+"1"
+```
+
+可以看到已经将key1迁至6384了，并且可以获取到。此时执行info replication（当前连接的是6384），结果如下：
+
+```
+127.0.0.1:6384> info replication
+# Replication
+role:master
+connected_slaves:0
+master_repl_offset:0
+repl_backlog_active:0
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:0
+repl_backlog_histlen:0
+```
+
+可以看到6384已经升为master了，没有slave。
+
+然后，重新启动6381，控制台终端执行下面语句。
+
+```
+redis-server.exe redis.windows-service-6381.conf
+```
+
+此时，在6384上，执行info replication，结果如下：
+
+```
+127.0.0.1:6384> info replication
+# Replication
+role:master
+connected_slaves:1
+slave0:ip=127.0.0.1,port=6381,state=online,offset=15,lag=1
+master_repl_offset:15
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:2
+repl_backlog_histlen:14
+```
+
+可以看到6381已经变成6384的slave了。再执行cluster nodes，结果如下：
+
+```
+127.0.0.1:6384> cluster nodes
+c906b59f8e13cf52fc22b8843590f661aea39531 127.0.0.1:6382 master - 0 1609903637909 3 connected 10923-16383
+940085ce76e0aff7a47a0939bff4ecbdb5017833 127.0.0.1:6385 slave c906b59f8e13cf52fc22b8843590f661aea39531 0 1609903639923 6 connected
+2e7d21393bfbfb6f0555a74840452e1925d72128 127.0.0.1:6380 master - 0 1609903641938 1 connected 0-5460
+04e87f0a9c7dd3e77979e5e93988d3b8838bf8db 127.0.0.1:6381 slave f10666d4a43966139c6d74efeeb0fe82dbdc4423 0 1609903640931 7 connected
+f10666d4a43966139c6d74efeeb0fe82dbdc4423 127.0.0.1:6384 myself,master - 0 0 7 connected 5461-10922
+6513356e49986489af2ccd37d9cb369f38107f54 127.0.0.1:6383 slave 2e7d21393bfbfb6f0555a74840452e1925d72128 0 1609903638916 4 connected
+```
+
+6个节点都在线，并且6384是master，6381已经变成6384的slave。
+
+注：6个服务的配置文件redis.windows-service-6380.conf、redis.windows-service-6381.conf、redis.windows-service-6382.conf、redis.windows-service-6383.conf、redis.windows-service-6384.conf、redis.windows-service-6385.conf和搭建集群的脚本redis-trib.rb都放在cluster目录下。
+
+因为时间有限，缩阔容的部分没有进行实践，程序对接的部分也没有进行，都是后面几天需要完成的。
+
+最后，本部分的完成，得益于杜宇航同学，推荐网上资源（https://blog.csdn.net/baidu_27627251/article/details/112143714）。特别进行感谢。另外，同时也参考了其他资源，如https://blog.csdn.net/wuxiaolongah/article/details/107306679。非常感谢这些作者们。
+
