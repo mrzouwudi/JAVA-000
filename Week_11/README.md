@@ -765,3 +765,233 @@ decrease 110, but inventory is not enough!!!!
 ```
 
 注：以上分布式锁和分布式计数器的代码都放在lock_counter目录下，此外还包括pom文件。
+
+
+
+**5.（必做）**基于 Redis 的 PubSub 实现订单异步处理
+
+这题主要是实践Redis的PubSub机制。因此订单处理部分都全部简化，主要是有一个订单创建者触发创建一个订单（这里完全简化就只有一个订单号），然后向Redis的一个命名为“order.create”的channel发送这个订单信息（只有一个订单号）。一个该channel的接收者接收这个信息后，模拟处理订单，然后向一个命名为“order.process”的channel发送订单处理完的信息（其实还是这个订单号）。订单创建者在启动时同时订阅“order.process”这个channel因此，会收到信息，并且打印出来。下面是代码的具体说明。
+
+OrderCreatorMain，模拟订单起始创建
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.Jedis;
+
+import java.util.Scanner;
+
+public class OrderCreatorMain {
+    public static void main(String[] args) {
+        Jedis client = new Jedis("127.0.0.1",6379);
+        new Thread(new OrderReceiver()).start();
+        IdGeneratorService idGenerator = new IdGeneratorService();
+        System.out.println("开始模拟接收用户订单");
+        long orderId = idGenerator.getId();
+        client.publish(OrderChannelConstant.CREATE_CHANNEL, String.valueOf(orderId));
+        do {
+            Scanner inp = new Scanner(System.in);
+            String str = inp.next();
+            if ("end".equals(str)) {
+                client.disconnect();
+                System.exit(0);
+            }
+            orderId = idGenerator.getId();
+            client.publish(OrderChannelConstant.CREATE_CHANNEL, String.valueOf(orderId));
+        }while(true);
+    }
+}
+```
+
+因为订阅的时候是阻塞的，因此需要在另一个线程中完成订阅，OrderReceiver类实现了Runable接口，并且在run方法中对“order.process”这个channel进行订阅。OrderCreatorMain中，使用另一个Jedis客户端往“order.create”publish消息订单消息（就只有一个订单号）。如果控制台输入“end”这个模拟程序就会退出，如果是其他的输入，就会模拟生成一个起始订单信息异步处理。
+
+OrderReceiver
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.Jedis;
+
+public class OrderReceiver implements Runnable {
+    @Override
+    public void run() {
+        Jedis client = new Jedis("127.0.0.1",6379);
+        try {
+            OrderProcessMessageSubscriber processMessageReceiver = new OrderProcessMessageSubscriber();
+            client.subscribe(processMessageReceiver, OrderChannelConstant.PROCESS_CHANNEL);
+        } finally {
+            client.disconnect();
+        }
+    }
+}
+```
+
+这个类的作用前面已经说了。可以看到OrderProcessMessageSubscriber这个类是处理接收到消息。
+
+OrderProcessMessageSubscriber代码如下：
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.JedisPubSub;
+
+public class OrderProcessMessageSubscriber extends JedisPubSub {
+    @Override
+    public void onMessage(String channel, String message) {
+        System.out.println("订单已处理，订单号是" + message);
+    }
+
+}
+```
+
+OrderProcessMessageSubscriber类继承自JedisPubSub，这里只是接收消息，因此执行实现onMessage这个方法。这里只是简单模拟，因此输出一下接收的信息即可。
+
+接下来看一下，异步订单执行的部分。
+
+OrderProcessMain类
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.Jedis;
+
+public class OrderProcessMain {
+    public static void main(String[] args) {
+        Jedis client = new Jedis("127.0.0.1",6379);
+        OrderProcessor orderProcessor = new OrderProcessor();
+        OrderMessageReceiver listener = new OrderMessageReceiver(orderProcessor);
+        try {
+            client.subscribe(listener, OrderChannelConstant.CREATE_CHANNEL);
+        } finally {
+            client.disconnect();
+        }
+
+    }
+}
+```
+
+这类是订单异步执行的启动类，很简单主要就是要监听order.create这个channel发送过来的信息。
+
+OrderMessageReceiver
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.JedisPubSub;
+
+public class OrderMessageReceiver extends JedisPubSub {
+
+    private OrderProcessor orderProcessor;
+
+    public OrderMessageReceiver(OrderProcessor orderProcessor) {
+        this.orderProcessor = orderProcessor;
+    }
+
+    @Override
+    public void onMessage(String channel, String message) {
+        System.out.println("收到订单：" + message + "准备处理");
+        orderProcessor.processOrderMessage(message);
+    }
+}
+```
+
+这个类也是继承自JedisPubSub，可以看到收到消息后就将信息文本交由OrderProcessor处理。
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+import redis.clients.jedis.Jedis;
+
+public class OrderProcessor {
+
+    private Jedis client;
+    public OrderProcessor() {
+        this.client = new Jedis("127.0.0.1",6379);
+    }
+
+    public void processOrderMessage(String orderMessage) {
+        System.out.println("解析订单信息");
+        System.out.println("验证库存情况");
+        System.out.println("保存订单");
+        System.out.println("发送已创建的订单信息");
+        client.publish(OrderChannelConstant.PROCESS_CHANNEL, orderMessage );
+    }
+}
+```
+
+OrderProcessor类是具体处理订单的类，因为是极其简单的模拟，因此只是输出几行话代表进行处理。最后将处理后信息发送到“order.process”这个channel中。前面也看到了OrderReceiver中对这个channel进行了订阅，OrderProcessMessageSubscriber会处理收到的信息。
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+public class OrderChannelConstant {
+    public static final String CREATE_CHANNEL = "order.create";
+    public static final String PROCESS_CHANNEL = "order.process";
+}
+```
+
+OrderChannelConstant定义相关常量。
+
+```java
+package traincamp.redis.pubsub.jedis;
+
+public class IdGeneratorService {
+
+    //系统上线时间
+    private final long startTime = 1601256017000L;
+    //机器Id
+    private long workId;
+    //序列号
+    private long serialNum = 0;
+
+    //得到左移位
+    private final long serialNumBits = 20L;
+    private final long workIdBits = 2L;
+
+    private final long workIdShift = serialNumBits;
+    private final long timestampShift = workIdShift + workIdBits;
+
+    private long lastTimeStamp = 0L;
+
+    private long serialNumMax = -1 ^ (-1L << serialNumBits);
+
+    public IdGeneratorService() {
+        this(1L);
+    }
+
+    public IdGeneratorService(long workId) {
+        this.workId = workId;
+    }
+
+    public synchronized long getId() {
+        long timestamp = System.currentTimeMillis();
+        if( timestamp == lastTimeStamp) {
+            serialNum = (serialNum + 1) & serialNumMax;
+            if (serialNum == 0) {
+                timestamp = waitNextMillis(timestamp);
+            }
+        } else {
+            serialNum = timestamp & 1;
+        }
+        lastTimeStamp = timestamp;
+        return ((timestamp - startTime) << timestampShift)
+                | (workId << workIdShift)
+                | serialNum;
+    }
+
+    private long waitNextMillis(long timestamp) {
+        long nowTimestamp = System.currentTimeMillis();
+        while ( timestamp >= nowTimestamp) {
+            nowTimestamp = System.currentTimeMillis();
+        }
+        return nowTimestamp;
+    }
+}
+```
+
+IdGeneratorService，订单号生产器。
+
+这个模拟非常简单。按道理应该定义一个订单的实体类，发送订单消息时可以进行序列化（比如json的序列化），收到消息是进行反序列化。因为这里主要是进行redis的PubSub的实践，这个部分就没有实现。
+
+以上代码在pubsub目录下。
+
