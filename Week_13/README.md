@@ -302,3 +302,379 @@ public class TopicConsumer {
 这里，生产者和消费者都是连的嵌入的ActiveMQ上的，消费者可以启动多个进程实例，所有的消费者实例都可以收到发出的消息，这点可以从各消费者的控制台输出观察到。
 
 注：以上代码和POM文件放在activemq目录下。
+
+## 周六作业：
+
+**1.（必做）**搭建一个 3 节点 Kafka 集群，测试功能和性能；实现 spring kafka 下对 kafka 集群的操作，将代码提交到 github。
+
+（a）准备
+
+搭建的环境是在windows下
+
+在kafka官网下载（http://kafka.apache.org/downloads）下载二进制包 [kafka_2.13-2.7.0.tgz](https://www.apache.org/dyn/closer.cgi?path=/kafka/2.7.0/kafka_2.13-2.7.0.tgz) 。
+
+下载后放到合适位置解压。
+
+（b）配置
+
+首先配置zookeeper，主要是指定dataDir和dataLogDir
+
+```
+dataDir=F:\\software\\kafka_2.13-2.7.0\\data\\zoo_data
+dataLogDir=F:\\software\\kafka_2.13-2.7.0\\data\\zoo_log
+clientPort=2181
+maxClientCnxns=0
+admin.enableServer=false
+```
+
+添加三个kafka的配置文件：kafka9001.properties、kafka9002.properties、kafka9003.properties，内容如下：
+
+```
+broker.id=1
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=F:\\software\\kafka_2.13-2.7.0\\data\\kafka_log1
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connect=localhost:2181
+zookeeper.connection.timeout.ms=6000000
+delete.topic.enable=true
+group.initial.rebalance.delay.ms=0
+message.max.bytes=5000000
+replica.fetch.max.bytes=5000000
+listeners=PLAINTEXT://localhost:9001
+broker.list=localhost:9001,localhost:9002,localhost:9003
+```
+
+```
+broker.id=2
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=F:\\software\\kafka_2.13-2.7.0\\data\\kafka_log2
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connect=localhost:2181
+zookeeper.connection.timeout.ms=6000000
+delete.topic.enable=true
+group.initial.rebalance.delay.ms=0
+message.max.bytes=5000000
+replica.fetch.max.bytes=5000000
+listeners=PLAINTEXT://localhost:9002
+broker.list=localhost:9001,localhost:9002,localhost:9003
+```
+
+```
+broker.id=3
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=F:\\software\\kafka_2.13-2.7.0\\data\\kafka_log3
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connect=localhost:2181
+zookeeper.connection.timeout.ms=6000000
+delete.topic.enable=true
+group.initial.rebalance.delay.ms=0
+message.max.bytes=5000000
+replica.fetch.max.bytes=5000000
+listeners=PLAINTEXT://localhost:9003
+broker.list=localhost:9001,localhost:9002,localhost:9003
+```
+
+（c）运行
+
+先运行zookeeper，进入kafka安装目录下的bin\windows目录下，执行
+
+```
+zookeeper-server-start.bat ../../config/zookeeper.properties
+```
+
+然后在依次在不同控制台终端执行
+
+```
+kafka-server-start.bat kafka9001.properties
+kafka-server-start.bat kafka9002.properties
+kafka-server-start.bat kafka9003.properties
+```
+
+这里偷了个懒，直接把三个kafka配置文件放在bin\windows目录下
+
+（d）测试功能和性能
+
+开启一个控制台，执行
+
+```
+kafka-topics.bat --zookeeper localhost:2181 --create --topic test32 --partitions 3 --replication-factor 2
+kafka-console-producer.bat --bootstrap-server localhost:9003 --topic test32
+```
+
+然后打开三个控制台依次执行
+
+```
+kafka-console-consumer.bat --bootstrap-server localhost:9001 --topic test32 --from-beginning
+kafka-console-consumer.bat --bootstrap-server localhost:9002 --topic test32 --from-beginning
+kafka-console-consumer.bat --bootstrap-server localhost:9003 --topic test32 --from-beginning
+```
+
+然后在第一个producer的控制输入字符串并回车，这时观察三个consumer的控制台都有输出，正是producer发出的字符串
+
+打开控制台执行
+
+```
+kafka-producer-perf-test.bat --topic test32 --num-records 100000 --record-size 1000 --throughput 2000 --producer-props bootstrap.servers=localhost:9002
+kafka-consumer-perf-test.bat --bootstrap-server localhost:9002 --topic test32 --fetch-size 1048576 --messages 100000 --threads 1
+```
+
+进行性能测试。
+
+（e）实现 spring kafka 下对 kafka 集群的操作
+
+【1】producer的说明
+
+先创建一个springboot工程，选择spring-kafka模块。这时pom中包含了下面的依赖
+
+```
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.8.2</version>
+        </dependency>
+```
+
+主要是spring-kafka的依赖，另外，为了对消息进行json序列化使用了GSON。
+
+application.yml配置文件如下：
+
+```yaml
+spring:
+  kafka:
+    bootstrap-servers: http://127.0.0.1:9001,http://127.0.0.1:9002,http://127.0.0.1:9003
+    producer:
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      batch-size: 16384
+      retries: 0
+      buffer-memory: 33554432
+server:
+  port: 8080
+```
+
+生产者类KafkaProducer如下：
+
+```java
+package traincamp.mq.kafka;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Component;
+
+import java.util.Date;
+import java.util.UUID;
+
+@Component
+@Slf4j
+public class KafkaProducer {
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    private Gson gson = new GsonBuilder().create();
+
+    //发送消息方法
+    public void send() {
+        Message message = new Message();
+        message.setId(System.currentTimeMillis());
+        message.setMsg(UUID.randomUUID().toString());
+        message.setSendTime(new Date());
+        log.info("+++++++++++++++++++++  message = {}", gson.toJson(message));
+        kafkaTemplate.send("topic.test",gson.toJson(message));
+    }
+}
+```
+
+消息的pojo类
+
+```java
+package traincamp.mq.kafka;
+
+import lombok.Data;
+
+import java.util.Date;
+
+@Data
+public class Message {
+    private Long id;    //id
+    private String msg; //消息
+    private Date sendTime;  //时间戳
+}
+```
+
+测试类
+
+```java
+package traincamp.mq.kafka;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class KafkaProducerTest {
+
+    @Autowired
+    private KafkaProducer kafkaProducer;
+
+    @Test
+    public void kafkaProducer(){
+        this.kafkaProducer.send();
+    }
+
+    //@Test
+    public void contextLoads() {
+    }
+
+}
+```
+
+可以直接运行测试进行消息发送。
+
+【1】consumer的说明
+
+先创建一个springboot工程，选择spring-kafka模块。这时pom中包含了下面的依赖
+
+```
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.8.2</version>
+        </dependency>
+```
+
+主要是spring-kafka的依赖，另外，为了对消息进行json序列化使用了GSON。
+
+application.yml配置文件如下：
+
+```yaml
+server:
+  port: 8099
+spring:
+  kafka:
+    bootstrap-servers: http://127.0.0.1:9001,http://127.0.0.1:9002,http://127.0.0.1:9003
+    consumer:
+      group-id: test-consumer-group
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+      auto-commit-interval: 20000
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+```
+
+可以看到consumer和producer的配置上还是有比较明显区别的。
+
+消费者类KafkaConsumer如下：
+
+```java
+package traincamp.mq.kafkaconsumer;
+
+import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
+
+@Component
+@Slf4j
+public class KafkaConsumer {
+
+    @KafkaListener(topics = {"topic.test"})
+    public void consumer(ConsumerRecord<?, ?> record) {
+        Optional<?> kafkaMessage = Optional.ofNullable(record.value());
+        if (kafkaMessage.isPresent()) {
+            Object message = kafkaMessage.get();
+            log.info("----------------- record =" + record);
+            log.info("------------------ message =" + message);
+        }
+    }
+}
+```
+
+注意注解 @KafkaListener，其中topic的值一定和producer发送的topic对应上
+
+【3】执行
+
+先将consumer的springboot启动起来。然后将producer的单元测试类KafkaProducerTest执行，可以在consumer的控制台观察以下输出：
+
+```
+2021-01-13 21:18:44.793  INFO 18456 --- [ntainer#0-0-C-1] t.mq.kafkaconsumer.KafkaConsumer         : ----------------- record =ConsumerRecord(topic = topic.test, partition = 0, leaderEpoch = 0, offset = 1, CreateTime = 1610543924764, serialized key size = -1, serialized value size = 102, headers = RecordHeaders(headers = [], isReadOnly = false), key = null, value = {"id":1610543923922,"msg":"3df39b85-8902-4b9b-8e67-6b294e6cb19b","sendTime":"Jan 13, 2021 9:18:44 PM"})
+2021-01-13 21:18:44.793  INFO 18456 --- [ntainer#0-0-C-1] t.mq.kafkaconsumer.KafkaConsumer         : ------------------ message ={"id":1610543923922,"msg":"3df39b85-8902-4b9b-8e67-6b294e6cb19b","sendTime":"Jan 13, 2021 9:18:44 PM"}
+```
+
+说明发送接收成功。
+
+注：producer的工程代码在kafka-producer目录下，consumer的工程代码在kafka-consumer目录下。
+
+最后注明：代码部分的实现参考了https://blog.csdn.net/jucks2611/article/details/80817476
