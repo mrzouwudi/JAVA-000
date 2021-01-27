@@ -21,7 +21,7 @@
 
 【三】架构。整体架构如下：
 
-![秒杀系统架构](http://bolgimg.beijingyijikeji.com/img/second_kill_arch_1.jpg)
+![秒杀系统架构](https://github.com/mrzouwudi/JAVA-000/blob/main/Week_15/second_kill_arch_1.jpg)
 
 整体架构，从左向右分别对应了在运营人员添加秒杀商品、秒杀前用户获取秒杀详情页、用户登录、秒杀下单以及支付和秒杀后运营获取秒杀结果进行分析的五个步骤。
 
